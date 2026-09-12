@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    
+    <!-- 声明电视特性，不要触摸屏也能用 -->
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+
+    <application 
+        android:label="很酷TV" 
+        android:theme="@style/Theme.AppCompat.NoActionBar" 
+        android:usesCleartextTraffic="true"> <!-- 允许加载 http 的内网 IP -->
+        
+        <!-- 主界面：WebView 容器 -->
+        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <!-- 声明为电视 App 和桌面启动器 -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- 播放器界面 -->
+        <activity android:name=".ExoPlayerActivity" android:exported="false" android:screenOrientation="landscape"/>
+    </application>
+</manifest>
