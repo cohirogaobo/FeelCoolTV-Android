@@ -31,9 +31,8 @@ class MainActivity : AppCompatActivity() {
         // 注册 JS Bridge，名字叫 FeelCoolTV
         webView.addJavascriptInterface(JSBridge(), "FeelCoolTV")
         
-        // ⚠️ 请把这里的 IP 换成你 Mac 电脑在路由器里的局域网 IP
-        // 确保你的 Mac 运行了 python3 -m http.server 8000
-        webView.loadUrl("http://192.168.1.14:8000/feelcool_launcher.html")
+        // 🔥 已经替换为你托管在 Netlify 的公网线上地址
+        webView.loadUrl("https://cooltv.netlify.app")
     }
 
     inner class JSBridge {
