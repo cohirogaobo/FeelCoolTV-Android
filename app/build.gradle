@@ -5,17 +5,24 @@ android {
     compileSdk 33
     defaultConfig { 
         applicationId "com.feelcool.tv"
-        minSdk 23 // 兼容大部分老旧电视
+        minSdk 23
         targetSdk 33 
         versionCode 1; versionName "1.0" 
+    }
+    // 明确指定 Java 17 兼容性
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
     }
 }
 
 dependencies {
     implementation 'androidx.core:core-ktx:1.9.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    // 引入 Google 官方的顶级播放器 ExoPlayer (Media3)
     implementation 'androidx.media3:media3-exoplayer:1.1.1'
     implementation 'androidx.media3:media3-ui:1.1.1'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.1.1' // 专门用来解析 m3u8 直播流
+    implementation 'androidx.media3:media3-exoplayer-hls:1.1.1'
 }
