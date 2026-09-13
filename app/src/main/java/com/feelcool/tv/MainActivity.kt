@@ -16,25 +16,50 @@ class MainActivity : AppCompatActivity() {
         webView.setBackgroundColor(Color.BLACK)
         setContentView(webView)
 
-        // 彻底解决虚焦、卡顿和比例放大问题的核心黑魔法
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             mediaPlaybackRequiresUserGesture = false
             
-            // 强制 1:1 物理像素渲染，拒绝系统二次拉伸拉黑
+            // 强制 1:1 物理像素渲染，解决电视强制拉伸导致的虚焦
             useWideViewPort = true
             loadWithOverviewMode = true
-            // 锁定字体缩放比例，防止电视系统的“大字号”设置干扰 UI 布局
             textZoom = 100 
         }
         
-        // 强制开启 GPU 硬件加速图层，让动画帧率翻倍，边缘更加锐利
+        // 开启硬件加速图层，大幅提升渲染性能与清晰度
         webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
         
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
         webView.webViewClient = WebViewClient()
+        
+        // 注册桥接层，让 JS 可以调用下面的 JSBridge
+        webView.addJavascriptInterface(JSBridge(), "FeelCoolTV")
+        
+        // 指向你的 Netlify 线上地址
+        webView.loadUrl("https://cooltv.netlify.app")
+    }
+
+    // 注意这里：JSBridge 必须在 MainActivity 的大括号内部
+    inner class JSBridge {
+        @JavascriptInterface
+        fun executeAction(action: String, title: String) {
+            if (action.startsWith("iptv:")) {
+                val url = action.substring(5)
+                val intent = Intent(this@MainActivity, ExoPlayerActivity::class.java)
+                intent.putExtra("VIDEO_URL", url)
+                startActivity(intent)
+            } else if (action.startsWith("app:")) {
+                val pkg = action.substring(4)
+                val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                if (launchIntent != null) {
+                    startActivity(launchIntent)
+                }
+            }
+        }
+    }
+}        webView.webViewClient = WebViewClient()
         webView.addJavascriptInterface(JSBridge(), "FeelCoolTV")
         
         webView.loadUrl("https://cooltv.netlify.app")
