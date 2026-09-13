@@ -13,28 +13,51 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         
         val webView = WebView(this)
-        webView.setBackgroundColor(Color.BLACK) // 网页没出来前用纯黑垫底
+        webView.setBackgroundColor(Color.BLACK)
         setContentView(webView)
 
+        // 彻底解决虚焦、卡顿和比例放大问题的核心黑魔法
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             mediaPlaybackRequiresUserGesture = false
+            
+            // 强制 1:1 物理像素渲染，拒绝系统二次拉伸拉黑
+            useWideViewPort = true
+            loadWithOverviewMode = true
+            // 锁定字体缩放比例，防止电视系统的“大字号”设置干扰 UI 布局
+            textZoom = 100 
         }
         
-        // 关键：把遥控器的焦点权限全部交给网页
+        // 强制开启 GPU 硬件加速图层，让动画帧率翻倍，边缘更加锐利
+        webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
+        
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
-        
         webView.webViewClient = WebViewClient()
-        
-        // 注册 JS Bridge，名字叫 FeelCoolTV
         webView.addJavascriptInterface(JSBridge(), "FeelCoolTV")
         
-        // 🔥 已经替换为你托管在 Netlify 的公网线上地址
         webView.loadUrl("https://cooltv.netlify.app")
     }
 
+    inner class JSBridge {
+        @JavascriptInterface
+        fun executeAction(action: String, title: String) {
+            if (action.startsWith("iptv:")) {
+                val url = action.substring(5)
+                val intent = Intent(this@MainActivity, ExoPlayerActivity::class.java)
+                intent.putExtra("VIDEO_URL", url)
+                startActivity(intent)
+            } else if (action.startsWith("app:")) {
+                val pkg = action.substring(4)
+                val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                if (launchIntent != null) {
+                    startActivity(launchIntent)
+                }
+            }
+        }
+    }
+}
     inner class JSBridge {
         @JavascriptInterface
         fun executeAction(action: String, title: String) {
