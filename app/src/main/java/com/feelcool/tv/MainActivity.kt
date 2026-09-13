@@ -9,19 +9,23 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
     private lateinit var splashView: ImageView
+    private lateinit var webView: WebView
+    
+    // 用于3连击退出的计数器
+    private var backPressCount = 0
+    private var lastBackPressTime = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 1. 创建一个层叠布局 (Frame)
         val layout = FrameLayout(this)
         
-        // 2. 初始化底层网页
-        val webView = WebView(this)
+        webView = WebView(this)
         webView.setBackgroundColor(Color.BLACK)
         webView.settings.apply {
             javaScriptEnabled = true
@@ -37,22 +41,45 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = WebViewClient()
         webView.addJavascriptInterface(JSBridge(), "FeelCoolTV")
         
-        // 3. 初始化顶层原生开屏画面
         splashView = ImageView(this)
         splashView.setBackgroundColor(Color.BLACK)
-        // 读取你上传的 splash 图片，自动裁剪适应屏幕
         val splashResId = resources.getIdentifier("splash", "drawable", packageName)
         if (splashResId != 0) {
             splashView.setImageResource(splashResId)
             splashView.scaleType = ImageView.ScaleType.CENTER_CROP
         }
         
-        // 4. 将网页和开屏图依次盖在布局上
         layout.addView(webView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         layout.addView(splashView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         setContentView(layout)
 
         webView.loadUrl("https://cooltv.netlify.app")
+    }
+
+    // 🔥 核心修改：接管系统返回键
+    override fun onBackPressed() {
+        // 向网页发射一个信号，询问网页当前状态
+        webView.evaluateJavascript("javascript:window.handleHardwareBack()") { result ->
+            // 如果网页返回 "true"，说明它自己处理了返回（比如关闭了子菜单，或退回了侧边栏）
+            if (result == "\"true\"" || result == "true") {
+                backPressCount = 0 // 计数器清零
+            } else {
+                // 网页没东西可退了，触发 3 次防误触机制
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastBackPressTime > 2000) {
+                    backPressCount = 1
+                    lastBackPressTime = currentTime
+                    Toast.makeText(this, "再按两次返回键退出很酷TV", Toast.LENGTH_SHORT).show()
+                } else {
+                    backPressCount++
+                    if (backPressCount >= 3) {
+                        super.onBackPressed() // 真正退出应用
+                    } else {
+                        Toast.makeText(this, "再按 ${3 - backPressCount} 次返回键退出", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
     }
 
     inner class JSBridge {
@@ -68,11 +95,12 @@ class MainActivity : AppCompatActivity() {
                 val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
                 if (launchIntent != null) {
                     startActivity(launchIntent)
+                } else {
+                    runOnUiThread { Toast.makeText(this@MainActivity, "未找到该应用", Toast.LENGTH_SHORT).show() }
                 }
             }
         }
 
-        // 供前端 HTML 调用的“销毁开屏”接口
         @JavascriptInterface
         fun hideSplash() {
             runOnUiThread {
