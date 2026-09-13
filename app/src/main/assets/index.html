@@ -228,7 +228,6 @@
                 <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg><span class="item-text">有线电视</span>
             </div>
             
-            <!-- 🔥 更新：流媒体专属图标（电视内带播放器三角形） -->
             <div class="nav-item focusable" tabindex="0" data-row="3" data-col="0" data-section-name="流媒体" data-bg="https://images.unsplash.com/photo-1578022761797-b8636ac1773c?q=80&w=2564" data-title="流媒体" data-sub="在线视频生态">
                 <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm-10 9V7l5 3.5-5 3.5z"/></svg><span class="item-text">流媒体</span>
             </div>
@@ -285,12 +284,19 @@
 
     <script>
         var CONFIG_URL = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/main/config.json"; 
-        
-        // 🔥 接入你刚刚部署的 Cloudflare 代理节点
         var TMDB_API_BASE = "https://tmdb-proxy.gaobo2002.workers.dev/3";
         var TMDB_IMG_BASE = "https://tmdb-proxy.gaobo2002.workers.dev/t/p/original";
 
-        var globalConfig = null;
+        var globalConfig = {
+            user: {
+                name: "扣扣扣漏",
+                avatar_url: "https://feelcool.netlify.app/assets/GB.jpg"
+            },
+            api: {
+                tmdb_api_key: "f7762624a95e4c3823500736d40162cd"
+            }
+        };
+
         var currentFocusEl = null; 
         var toastTimeout;
         var currentTrackRow = -1;
@@ -326,6 +332,16 @@
             toastTimeout = setTimeout(function() { toast.classList.remove('show'); }, 2500);
         };
 
+        function removeNativeSplash() {
+            setTimeout(function() {
+                try {
+                    if (window.FeelCoolTV && window.FeelCoolTV.hideSplash) {
+                        window.FeelCoolTV.hideSplash();
+                    }
+                } catch(e) {}
+            }, 100); 
+        }
+
         function renderTrack(rowId) {
             if (currentTrackRow === rowId) return; 
             currentTrackRow = rowId;
@@ -352,47 +368,71 @@
             }
         }
 
+        function applyUserConfig() {
+            if(globalConfig && globalConfig.user) {
+                document.getElementById('uiUserName').innerText = globalConfig.user.name || 'User';
+                if(globalConfig.user.avatar_url) document.getElementById('uiAvatar').src = globalConfig.user.avatar_url;
+            }
+        }
+
         function initApp() {
-            fetch(CONFIG_URL)
-                .then(function(response) {
-                    if (response.ok) return response.json();
-                    throw new Error("Config error");
-                })
-                .then(function(data) {
-                    globalConfig = data;
-                    if(globalConfig && globalConfig.user) {
-                        document.getElementById('uiUserName').innerText = globalConfig.user.name || 'User';
-                        if(globalConfig.user.avatar_url) document.getElementById('uiAvatar').src = globalConfig.user.avatar_url;
-                    }
-                    
-                    if (globalConfig.rows) {
-                        ROW_DATA = globalConfig.rows;
-                    }
-                    
-                    if (currentTrackRow > 0) {
-                        var tempRow = currentTrackRow;
-                        currentTrackRow = -1; 
-                        renderTrack(tempRow);
-                    }
-                    
+            // 立即解除开屏遮挡
+            removeNativeSplash();
+            
+            var configLoaded = false;
+            
+            // 加入 2 秒并发超时机制，防止国内 GFW 阻塞 GitHub RAW 导致界面假死
+            var configTimer = setTimeout(function() {
+                if (!configLoaded) {
+                    configLoaded = true;
+                    applyUserConfig();
                     fetchTrendingShow();
-                })
-                .catch(function(error) { removeNativeSplash(); });
+                }
+            }, 2000);
+
+            if (typeof fetch === 'function') {
+                fetch(CONFIG_URL)
+                    .then(function(response) {
+                        if (response.ok) return response.json();
+                        throw new Error("Config error");
+                    })
+                    .then(function(data) {
+                        if (configLoaded) return; 
+                        configLoaded = true;
+                        clearTimeout(configTimer);
+                        
+                        if (data && data.api) globalConfig.api = data.api;
+                        if (data && data.user) globalConfig.user = data.user;
+                        if (data && data.rows) ROW_DATA = data.rows;
+                        
+                        applyUserConfig();
+                        
+                        if (currentTrackRow > 0) {
+                            var tempRow = currentTrackRow;
+                            currentTrackRow = -1; 
+                            renderTrack(tempRow);
+                        }
+                        fetchTrendingShow();
+                    })
+                    .catch(function(error) { 
+                        if (configLoaded) return;
+                        configLoaded = true;
+                        clearTimeout(configTimer);
+                        applyUserConfig();
+                        fetchTrendingShow(); 
+                    });
+            }
 
             var initial = document.querySelector('.focusable[data-row="1"][data-col="0"]');
             if(initial) {
-                setTimeout(function() {
-                    setFocus(initial);
-                }, 150);
-                setTimeout(function() {
-                    document.body.classList.remove('preload');
-                }, 300);
+                setTimeout(function() { setFocus(initial); }, 150);
+                setTimeout(function() { document.body.classList.remove('preload'); }, 300);
             }
         }
 
         function fetchTrendingShow() {
             if (!globalConfig || !globalConfig.api || !globalConfig.api.tmdb_api_key) {
-                removeNativeSplash(); return;
+                return;
             }
             var tmdbApiKey = globalConfig.api.tmdb_api_key;
 
@@ -410,15 +450,8 @@
                             updateHeroUI(trendingData.bg, trendingData.title, trendingData.sub, '很酷 TV+', svgHTML);
                         }
                     }
-                    removeNativeSplash(); 
                 })
-                .catch(function(e) { removeNativeSplash(); });
-        }
-
-        function removeNativeSplash() {
-            setTimeout(function() {
-                if (window.FeelCoolTV && window.FeelCoolTV.hideSplash) window.FeelCoolTV.hideSplash();
-            }, 200); 
+                .catch(function(e) { console.error("TMDB Fetch Error", e); });
         }
 
         function updateHeroUI(bg, title, sub, brandName, svgIconHTML) {
@@ -567,13 +600,14 @@
                 return null;
             }
 
-            /* 🔥 修复：独立抽离弹出的子菜单（User与Power）控制域，不再拦截 -1 侧边栏按钮 */
-            if (row >= 80) { 
+            if (row >= 80 || row === -1) { 
                 e.preventDefault();
                 var isUserMenu = row >= 90;
+                var isPowerMenu = row >= 80 && row < 90;
                 
                 switch(e.key) {
                     case 'ArrowDown':
+                        if (row === -1) nextEl = findNext(0, 0);
                         if (row === 80) nextEl = findNext(81, 1);
                         if (row === 90) nextEl = findNext(91, 1);
                         break;
@@ -585,7 +619,7 @@
                         if (isUserMenu) {
                             document.getElementById('userSubmenu').classList.remove('active');
                             nextEl = findNext(-1, 0);
-                        } else {
+                        } else if (isPowerMenu) {
                             document.getElementById('powerSubmenu').classList.remove('active');
                             nextEl = findNext(5, 0);
                         }
@@ -594,10 +628,22 @@
                         break;
                     case 'Enter':
                         var action = currentFocusEl.getAttribute('data-action');
+                        
+                        if (action === 'submenu:user') {
+                            var menu = document.getElementById('userSubmenu');
+                            var rect = currentFocusEl.getBoundingClientRect();
+                            menu.style.top = (rect.bottom + 5) + 'px'; 
+                            menu.style.bottom = 'auto';
+
+                            menu.classList.add('active');
+                            setTimeout(function(){ setFocus(findNext(90, 1)); }, 50);
+                            return;
+                        }
+                        
                         if (isUserMenu) {
                             document.getElementById('userSubmenu').classList.remove('active');
                             setFocus(findNext(-1, 0));
-                        } else {
+                        } else if (isPowerMenu) {
                             document.getElementById('powerSubmenu').classList.remove('active');
                             setFocus(findNext(5, 0));
                         }
@@ -613,7 +659,6 @@
                 return; 
             }
 
-            /* ======== 原生主体界面按键逻辑 ======== */
             switch(e.key) {
                 case 'ArrowDown':
                     e.preventDefault();
@@ -638,11 +683,7 @@
                 case 'ArrowRight':
                     e.preventDefault();
                     if (col === 0) {
-                        if (row === -1) {
-                            nextEl = findNext(1, 1) || currentFocusEl; 
-                        } else {
-                            nextEl = findNext(row, 1) || currentFocusEl; 
-                        }
+                        nextEl = findNext(row, 1) || currentFocusEl; 
                     } else {
                         nextEl = findNext(row, col + 1) || currentFocusEl;
                     }
@@ -659,15 +700,7 @@
                     e.preventDefault();
                     var action = currentFocusEl.getAttribute('data-action');
                     
-                    if (action === 'submenu:user') {
-                        var menu = document.getElementById('userSubmenu');
-                        var rect = currentFocusEl.getBoundingClientRect();
-                        menu.style.top = (rect.bottom + 5) + 'px'; 
-                        menu.style.bottom = 'auto';
-
-                        menu.classList.add('active');
-                        setTimeout(function(){ setFocus(findNext(90, 1)); }, 50);
-                    } else if (action === 'submenu:power') {
+                    if (action === 'submenu:power') {
                         var menu = document.getElementById('powerSubmenu');
                         var rect = currentFocusEl.getBoundingClientRect();
                         var bottomOffset = window.innerHeight - rect.bottom;
