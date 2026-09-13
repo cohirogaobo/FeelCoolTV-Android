@@ -8,6 +8,7 @@
 
     <application 
         android:label="很酷TV" 
+        android:icon="@drawable/icon"
         android:theme="@style/Theme.AppCompat.NoActionBar" 
         android:usesCleartextTraffic="true"> <!-- 允许加载 http 的内网 IP -->
         
