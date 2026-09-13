@@ -56,7 +56,6 @@
             display: flex; flex-direction: column; padding: 18px 10px; box-sizing: border-box;
             -webkit-mask-image: -webkit-radial-gradient(white, black); transform: translateZ(0); 
             transition: width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), padding var(--animation-speed) ease;
-            /* 🔥 修复 1：禁止容器整体滚动，交由内部列表滚动 */
             overflow: hidden; 
         }
         
@@ -66,7 +65,7 @@
             display: flex; justify-content: space-between; align-items: center; 
             padding: 6px 8px; margin-bottom: 20px; border-radius: 12px;
             transition: all 0.25s ease; cursor: pointer; outline: none; white-space: nowrap;
-            flex-shrink: 0; /* 防止挤压 */
+            flex-shrink: 0; 
         }
         .sidebar.collapsed .sidebar-header { justify-content: center; padding: 6px 0; }
         .sidebar-header.focused {
@@ -90,13 +89,15 @@
         .user-name { font-size: 15px; font-weight: 400; letter-spacing: normal; }
         .sidebar-clock { font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.7); }
         
-        /* 🔥 修复 1：将 nav-list 设为独立滚动区 */
-        .nav-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; overflow-x: hidden; flex-grow: 1; }
+        .nav-list { 
+            display: flex; flex-direction: column; gap: 4px; overflow-y: auto; overflow-x: hidden; flex-grow: 1; 
+            padding: 4px; margin: -4px; 
+        }
         .nav-list::-webkit-scrollbar { display: none; }
         
         .nav-item { 
             display: flex; align-items: center; 
-            width: 195px; height: 44px; 
+            width: 170px; height: 44px; 
             padding: 0 12px; margin: 0 auto; box-sizing: border-box; 
             border-radius: 12px; flex-shrink: 0;
             font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.65); white-space: nowrap;
@@ -106,11 +107,7 @@
                         background-color 0.25s ease, color 0.25s ease, transform 0.25s ease; 
         }
         
-        .sidebar.collapsed .nav-item { 
-            width: 44px; 
-            padding: 0; 
-            justify-content: center; 
-        }
+        .sidebar.collapsed .nav-item { width: 44px; padding: 0; justify-content: center; }
         
         .nav-item svg { width: 20px; height: 20px; margin-right: 12px; fill: currentColor; opacity: 0.8; display: block; flex-shrink: 0; transition: margin 0.25s ease; }
         .sidebar.collapsed .nav-item svg { margin-right: 0; }
@@ -128,9 +125,9 @@
         .sidebar.collapsed .nav-divider { margin: 12px 10px; }
         .nav-section-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 0 10px 8px 10px; flex-shrink: 0; }
 
-        /* ======== 电源子菜单 ======== */
+        /* ======== 子菜单公共样式 ======== */
         .submenu {
-            position: absolute; left: 235px; width: 140px;
+            position: absolute; left: 235px; width: 150px;
             background: var(--glass-bg); backdrop-filter: blur(35px); -webkit-backdrop-filter: blur(35px);
             border-radius: 16px; border: 1px solid var(--glass-border); z-index: 20;
             display: flex; flex-direction: column; padding: 10px; box-sizing: border-box;
@@ -138,38 +135,32 @@
             opacity: 0; pointer-events: none; transform: translateX(-15px);
             transition: opacity 0.25s ease, transform 0.25s ease;
         }
-        /* 🔥 修复 2：防止子菜单选项继承侧边栏的 195px 宽度导致溢出 */
         .submenu .nav-item { width: 100%; height: auto; padding: 10px 12px; justify-content: flex-start; }
         .submenu .nav-item svg { margin-right: 10px; }
         .submenu.active { opacity: 1; pointer-events: auto; transform: translateX(0); }
 
         /* ======== 主内容区 ======== */
         .main-content { 
-            position: absolute; 
-            top: 0; bottom: 0; z-index: 2; 
-            left: 235px;
-            width: calc(100% - 235px); 
+            position: absolute; top: 0; bottom: 0; z-index: 2; left: 235px; width: calc(100% - 235px); 
             display: flex; flex-direction: column; justify-content: flex-end; padding: 40px 45px; box-sizing: border-box; 
             transition: left var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1);
             overflow: hidden; 
         }
-        .main-content.expanded { 
-            left: 88px; 
-            width: calc(100% - 88px);
-        }
+        .main-content.expanded { left: 88px; width: calc(100% - 88px); }
 
         .hero-text { margin-bottom: 25px; transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease; display: flex; flex-direction: column; justify-content: flex-end; }
         .hero-text.lowered { transform: translateY(205px); }
 
         .brand-title { font-size: 14px; font-weight: 400; letter-spacing: 1px; color: rgba(255,255,255,0.75); margin-bottom: 8px; display: flex; align-items: center; }
         .brand-title svg { width: 16px !important; height: 16px !important; fill: #fff; display: block; flex-shrink: 0; margin-right: 6px; } 
+        #heroBrandText { transform: translateY(1px); line-height: 1; }
+
         .main-title { font-size: 42px; font-weight: 800; margin: 0 0 6px 0; letter-spacing: -0.5px; line-height: 1.15; max-width: 75%; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .sub-title { font-size: 15px; color: rgba(255,255,255,0.6); max-width: 550px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 400; }
 
         .carousel-container { 
             width: 100%; height: 180px; 
-            overflow: visible; 
-            position: relative; 
+            overflow: visible; position: relative; 
         }
         
         .carousel-track { 
@@ -204,8 +195,7 @@
             color: #fff; padding: 12px 28px; border-radius: 20px; font-size: 15px; font-weight: 500;
             opacity: 0; pointer-events: none; transition: opacity 0.3s ease, transform 0.3s ease;
             z-index: 999; border: 1px solid rgba(255,255,255,0.1); letter-spacing: 0.5px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            overflow: hidden;
-            -webkit-mask-image: -webkit-radial-gradient(white, black);
+            overflow: hidden; -webkit-mask-image: -webkit-radial-gradient(white, black);
         }
         .toast-container.show { opacity: 1; transform: translateX(-50%) translateY(0) translateZ(0); }
     </style>
@@ -216,7 +206,8 @@
     <div class="hero-overlay" id="heroOverlay"></div>
 
     <div class="sidebar" id="sidebar">
-        <div class="sidebar-header focusable" tabindex="0" data-row="-1" data-col="0" data-no-bg-change="true">
+        <!-- 用户菜单入口 -->
+        <div class="sidebar-header focusable" tabindex="0" data-row="-1" data-col="0" data-no-bg-change="true" data-action="submenu:user">
             <div class="user-left">
                 <div class="user-avatar"><img id="uiAvatar" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="User"></div>
                 <span class="user-name" id="uiUserName">加载中</span>
@@ -237,37 +228,41 @@
                 <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg><span class="item-text">有线电视</span>
             </div>
             
+            <!-- 🔥 更新：流媒体专属图标（电视内带播放器三角形） -->
             <div class="nav-item focusable" tabindex="0" data-row="3" data-col="0" data-section-name="流媒体" data-bg="https://images.unsplash.com/photo-1578022761797-b8636ac1773c?q=80&w=2564" data-title="流媒体" data-sub="在线视频生态">
-                <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/></svg><span class="item-text">流媒体</span>
-            </div>
-            
-            <div class="nav-item focusable" tabindex="0" data-row="4" data-col="0" data-section-name="米家" data-bg="https://images.unsplash.com/photo-1558002038-1055907df827?q=80&w=2564" data-title="智能家居" data-sub="IoT 控制中心" data-action="app:com.xiaomi.smarthome.tv">
-                <svg viewBox="0 0 24 24"><path d="M12 2L2 12h3v8h14v-8h3L12 2zm0 2.8l5 5V18H7v-8.2l5-5zM10 16h4v-5h-4v5z"/></svg><span class="item-text">米家</span>
+                <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm-10 9V7l5 3.5-5 3.5z"/></svg><span class="item-text">流媒体</span>
             </div>
             
             <div class="nav-divider"></div>
             <div class="nav-section-title">设置与电源</div>
             
-            <div class="nav-item focusable" tabindex="0" data-row="5" data-col="0" data-section-name="系统设置" data-bg="https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=2564" data-title="系统偏好" data-sub="网络与设备管理" data-action="app:com.xiaomi.mitv.settings">
+            <div class="nav-item focusable" tabindex="0" data-row="4" data-col="0" data-section-name="系统设置" data-bg="https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=2564" data-title="系统偏好" data-sub="网络与设备管理" data-action="app:com.xiaomi.mitv.settings">
                 <svg viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49-.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg><span class="item-text">系统设置</span>
             </div>
             
-            <div class="nav-item focusable" tabindex="0" data-row="6" data-col="0" data-section-name="电视管家" data-bg="https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=2564" data-title="一键加速" data-sub="清理内存提升性能" data-action="app:com.xiaomi.mitv.tvmanager">
-                <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg><span class="item-text">电视管家</span>
-            </div>
-            
-            <div class="nav-item focusable" tabindex="0" data-row="7" data-col="0" data-no-bg-change="true" data-section-name="电源" data-action="submenu:power">
+            <div class="nav-item focusable" tabindex="0" data-row="5" data-col="0" data-no-bg-change="true" data-section-name="电源" data-action="submenu:power">
                 <svg viewBox="0 0 24 24"><path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg><span class="item-text">电源</span>
             </div>
         </div>
     </div>
 
+    <!-- 用户菜单 -->
+    <div class="submenu" id="userSubmenu">
+        <div class="nav-item focusable" tabindex="0" data-row="90" data-col="1" data-no-bg-change="true" data-action="app:com.xiaomi.smarthome.tv">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 12h3v8h14v-8h3L12 2zm0 2.8l5 5V18H7v-8.2l5-5zM10 16h4v-5h-4v5z"/></svg>我的家庭
+        </div>
+        <div class="nav-item focusable" tabindex="0" data-row="91" data-col="1" data-no-bg-change="true" data-action="app:com.xiaomi.mitv.tvmanager">
+            <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>设备管家
+        </div>
+    </div>
+
+    <!-- 电源菜单 -->
     <div class="submenu" id="powerSubmenu">
         <div class="nav-item focusable" tabindex="0" data-row="80" data-col="1" data-no-bg-change="true" data-action="app:com.xiaomi.mitv.hyper.screensaver">
-            <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>屏保
+            <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>屏幕保护
         </div>
         <div class="nav-item focusable" tabindex="0" data-row="81" data-col="1" data-no-bg-change="true" data-action="app:com.mitv.tvhome">
-            <svg viewBox="0 0 24 24"><path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>退出
+            <svg viewBox="0 0 24 24"><path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>回到桌面
         </div>
     </div>
 
@@ -290,6 +285,11 @@
 
     <script>
         var CONFIG_URL = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/main/config.json"; 
+        
+        // 🔥 接入你刚刚部署的 Cloudflare 代理节点
+        var TMDB_API_BASE = "https://tmdb-proxy.gaobo2002.workers.dev/3";
+        var TMDB_IMG_BASE = "https://tmdb-proxy.gaobo2002.workers.dev/t/p/original";
+
         var globalConfig = null;
         var currentFocusEl = null; 
         var toastTimeout;
@@ -396,12 +396,12 @@
             }
             var tmdbApiKey = globalConfig.api.tmdb_api_key;
 
-            fetch('/tmdb-api/trending/tv/day?api_key=' + tmdbApiKey + '&language=zh-CN')
+            fetch(TMDB_API_BASE + '/trending/tv/day?api_key=' + tmdbApiKey + '&language=zh-CN')
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     if (data && data.results && data.results.length > 0) {
                         var show = data.results[0];
-                        trendingData.bg = '/tmdb-img/original' + show.backdrop_path;
+                        trendingData.bg = TMDB_IMG_BASE + show.backdrop_path;
                         trendingData.title = show.name || show.title;
                         trendingData.sub = '时下热门';
                         
@@ -457,9 +457,9 @@
             var row = parseInt(targetEl.getAttribute('data-row'));
             var col = parseInt(targetEl.getAttribute('data-col'));
 
-            if (col === 0 && row >= 1 && row <= 3) {
+            if (col === 0 && row >= 1 && row <= 4) {
                 renderTrack(row);
-            } else if (col === 0 && (row === 0 || row >= 4)) {
+            } else if (col === 0 && (row === 0 || row >= 5)) {
                 renderTrack(-1);
             }
 
@@ -469,7 +469,7 @@
             if (col >= 1 && row < 80) {
                 sidebar.classList.add('collapsed');
                 mainContent.classList.add('expanded');
-            } else if (col === 0 || row >= 80) {
+            } else if (col === 0 || row >= 80 || row === -1) {
                 sidebar.classList.remove('collapsed');
                 mainContent.classList.remove('expanded');
             }
@@ -480,8 +480,11 @@
                 if (sidebarItem) sidebarItem.classList.add('active-row');
             }
 
-            if (row < 7 || row > 81) {
+            if (row < 5 || (row > 5 && row < 80)) {
                 document.getElementById('powerSubmenu').classList.remove('active');
+            }
+            if (row !== -1 && row < 90) {
+                document.getElementById('userSubmenu').classList.remove('active');
             }
 
             var noBgChange = targetEl.getAttribute('data-no-bg-change') === 'true';
@@ -489,7 +492,7 @@
             var sectionName = targetEl.getAttribute('data-section-name') || '很酷 TV+';
 
             var svgIconHTML = '';
-            if (col === 0) {
+            if (col === 0 || row === -1) {
                 var svgEl = targetEl.querySelector('svg');
                 if (svgEl) svgIconHTML = svgEl.outerHTML;
             } else if (row < 80) {
@@ -519,10 +522,14 @@
         }
 
         window.handleHardwareBack = function() {
-            var isSubmenuOpen = document.getElementById('powerSubmenu').classList.contains('active');
-            if (isSubmenuOpen) {
+            if (document.getElementById('powerSubmenu').classList.contains('active')) {
                 document.getElementById('powerSubmenu').classList.remove('active');
-                setFocus(document.querySelector('.focusable[data-row="7"][data-col="0"]'));
+                setFocus(document.querySelector('.focusable[data-row="5"][data-col="0"]'));
+                return "true";
+            }
+            if (document.getElementById('userSubmenu').classList.contains('active')) {
+                document.getElementById('userSubmenu').classList.remove('active');
+                setFocus(document.querySelector('.focusable[data-row="-1"][data-col="0"]'));
                 return "true";
             }
             if (currentFocusEl) {
@@ -560,28 +567,53 @@
                 return null;
             }
 
-            var isSubmenuOpen = document.getElementById('powerSubmenu').classList.contains('active');
+            /* 🔥 修复：独立抽离弹出的子菜单（User与Power）控制域，不再拦截 -1 侧边栏按钮 */
             if (row >= 80) { 
                 e.preventDefault();
+                var isUserMenu = row >= 90;
+                
                 switch(e.key) {
                     case 'ArrowDown':
-                        if (row === 80) setFocus(document.querySelector('.focusable[data-row="81"]'));
+                        if (row === 80) nextEl = findNext(81, 1);
+                        if (row === 90) nextEl = findNext(91, 1);
                         break;
                     case 'ArrowUp':
-                        if (row === 81) setFocus(document.querySelector('.focusable[data-row="80"]'));
+                        if (row === 81) nextEl = findNext(80, 1);
+                        if (row === 91) nextEl = findNext(90, 1);
                         break;
                     case 'ArrowLeft':
-                        document.getElementById('powerSubmenu').classList.remove('active');
-                        setFocus(document.querySelector('.focusable[data-row="7"][data-col="0"]'));
+                        if (isUserMenu) {
+                            document.getElementById('userSubmenu').classList.remove('active');
+                            nextEl = findNext(-1, 0);
+                        } else {
+                            document.getElementById('powerSubmenu').classList.remove('active');
+                            nextEl = findNext(5, 0);
+                        }
+                        break;
+                    case 'ArrowRight':
                         break;
                     case 'Enter':
                         var action = currentFocusEl.getAttribute('data-action');
-                        if (window.FeelCoolTV && window.FeelCoolTV.executeAction) window.FeelCoolTV.executeAction(action, "");
+                        if (isUserMenu) {
+                            document.getElementById('userSubmenu').classList.remove('active');
+                            setFocus(findNext(-1, 0));
+                        } else {
+                            document.getElementById('powerSubmenu').classList.remove('active');
+                            setFocus(findNext(5, 0));
+                        }
+                        
+                        if (window.FeelCoolTV && window.FeelCoolTV.executeAction && action) {
+                            setTimeout(function(){
+                                window.FeelCoolTV.executeAction(action, "");
+                            }, 100);
+                        }
                         break;
                 }
+                if (nextEl && nextEl !== currentFocusEl) setFocus(nextEl);
                 return; 
             }
 
+            /* ======== 原生主体界面按键逻辑 ======== */
             switch(e.key) {
                 case 'ArrowDown':
                     e.preventDefault();
@@ -594,7 +626,11 @@
                 case 'ArrowUp':
                     e.preventDefault();
                     if (col === 0) {
-                        nextEl = findNext(row - 1, 0) || currentFocusEl;
+                        if (row === 0) {
+                            nextEl = findNext(-1, 0) || currentFocusEl;
+                        } else {
+                            nextEl = findNext(row - 1, 0) || currentFocusEl;
+                        }
                     } else {
                         nextEl = findNext(row, 0) || currentFocusEl;
                     }
@@ -602,8 +638,8 @@
                 case 'ArrowRight':
                     e.preventDefault();
                     if (col === 0) {
-                        if (row === 7 && isSubmenuOpen) {
-                            nextEl = findNext(80, 1) || currentFocusEl; 
+                        if (row === -1) {
+                            nextEl = findNext(1, 1) || currentFocusEl; 
                         } else {
                             nextEl = findNext(row, 1) || currentFocusEl; 
                         }
@@ -623,20 +659,28 @@
                     e.preventDefault();
                     var action = currentFocusEl.getAttribute('data-action');
                     
-                    if (action === 'submenu:power') {
+                    if (action === 'submenu:user') {
+                        var menu = document.getElementById('userSubmenu');
+                        var rect = currentFocusEl.getBoundingClientRect();
+                        menu.style.top = (rect.bottom + 5) + 'px'; 
+                        menu.style.bottom = 'auto';
+
+                        menu.classList.add('active');
+                        setTimeout(function(){ setFocus(findNext(90, 1)); }, 50);
+                    } else if (action === 'submenu:power') {
                         var menu = document.getElementById('powerSubmenu');
                         var rect = currentFocusEl.getBoundingClientRect();
                         var bottomOffset = window.innerHeight - rect.bottom;
                         menu.style.bottom = bottomOffset + 'px'; 
                         menu.style.top = 'auto';
 
-                        menu.classList.toggle('active');
-                        if(menu.classList.contains('active')){
-                             setTimeout(function(){ setFocus(document.querySelector('.focusable[data-row="80"]')); }, 50);
-                        }
+                        menu.classList.add('active');
+                        setTimeout(function(){ setFocus(findNext(80, 1)); }, 50);
                     } else if (action) {
-                        if (window.FeelCoolTV && window.FeelCoolTV.executeAction) window.FeelCoolTV.executeAction(action, document.getElementById('heroTitle').innerText);
-                    } else if (col === 0) {
+                        if (window.FeelCoolTV && window.FeelCoolTV.executeAction) {
+                            window.FeelCoolTV.executeAction(action, document.getElementById('heroTitle').innerText);
+                        }
+                    } else if (col === 0 && row > 0) {
                         var firstCard = findNext(row, 1);
                         if (firstCard) nextEl = firstCard;
                     }
