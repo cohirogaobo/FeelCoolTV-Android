@@ -51,7 +51,8 @@ class MainActivity : AppCompatActivity() {
         layout.addView(splashView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         setContentView(layout)
 
-        webView.loadUrl("https://cooltv.netlify.app")
+        // 🔥 修改点：不再请求 Netlify，直接从本地 APK 内部极速加载 HTML
+        webView.loadUrl("file:///android_asset/index.html")
     }
 
     override fun onBackPressed() {
@@ -63,7 +64,6 @@ class MainActivity : AppCompatActivity() {
                 if (currentTime - lastBackPressTime > 2000) {
                     backPressCount = 1
                     lastBackPressTime = currentTime
-                    // 呼叫前端 HTML 的高级提示条
                     webView.evaluateJavascript("javascript:showToast('再按两次返回键退出很酷TV')", null)
                 } else {
                     backPressCount++
@@ -87,18 +87,32 @@ class MainActivity : AppCompatActivity() {
                 startActivity(intent)
             } else if (action.startsWith("app:")) {
                 val pkg = action.substring(4)
-                // 双重验证：先尝试常规启动，再尝试电视专属 (Leanback) 启动
-                var launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                
+                // 🔥 修改点：针对小米等系统隐藏 Launcher 的暴力唤醒策略
+                var launchIntent = packageManager.getLeanbackLaunchIntentForPackage(pkg)
+                
                 if (launchIntent == null) {
-                    launchIntent = packageManager.getLeanbackLaunchIntentForPackage(pkg)
+                    launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                }
+                
+                // 如果常规意图和电视意图都拿不到（比如米家或信号源），采用强制隐式意图匹配
+                if (launchIntent == null) {
+                    launchIntent = Intent(Intent.ACTION_MAIN)
+                    launchIntent.setPackage(pkg)
+                    launchIntent.addCategory(Intent.CATEGORY_DEFAULT)
+                    launchIntent.addCategory(Intent.CATEGORY_INFO)
+                    // 验证该隐式意图是否真的能解析到应用，防崩溃
+                    if (launchIntent.resolveActivity(packageManager) == null) {
+                        launchIntent = null
+                    }
                 }
                 
                 if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     startActivity(launchIntent)
                 } else {
-                    // 如果都没找到，呼叫前端显示极简提示
                     runOnUiThread { 
-                        webView.evaluateJavascript("javascript:showToast('未找到该应用，请检查是否已安装')", null) 
+                        webView.evaluateJavascript("javascript:showToast('未找到应用或该应用禁止外部唤起')", null) 
                     }
                 }
             }
