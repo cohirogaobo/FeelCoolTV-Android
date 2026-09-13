@@ -9,14 +9,12 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
     private lateinit var splashView: ImageView
     private lateinit var webView: WebView
     
-    // 用于3连击退出的计数器
     private var backPressCount = 0
     private var lastBackPressTime = 0L
 
@@ -56,26 +54,23 @@ class MainActivity : AppCompatActivity() {
         webView.loadUrl("https://cooltv.netlify.app")
     }
 
-    // 🔥 核心修改：接管系统返回键
     override fun onBackPressed() {
-        // 向网页发射一个信号，询问网页当前状态
         webView.evaluateJavascript("javascript:window.handleHardwareBack()") { result ->
-            // 如果网页返回 "true"，说明它自己处理了返回（比如关闭了子菜单，或退回了侧边栏）
             if (result == "\"true\"" || result == "true") {
-                backPressCount = 0 // 计数器清零
+                backPressCount = 0
             } else {
-                // 网页没东西可退了，触发 3 次防误触机制
                 val currentTime = System.currentTimeMillis()
                 if (currentTime - lastBackPressTime > 2000) {
                     backPressCount = 1
                     lastBackPressTime = currentTime
-                    Toast.makeText(this, "再按两次返回键退出很酷TV", Toast.LENGTH_SHORT).show()
+                    // 呼叫前端 HTML 的高级提示条
+                    webView.evaluateJavascript("javascript:showToast('再按两次返回键退出很酷TV')", null)
                 } else {
                     backPressCount++
                     if (backPressCount >= 3) {
-                        super.onBackPressed() // 真正退出应用
+                        super.onBackPressed()
                     } else {
-                        Toast.makeText(this, "再按 ${3 - backPressCount} 次返回键退出", Toast.LENGTH_SHORT).show()
+                        webView.evaluateJavascript("javascript:showToast('再按 ${3 - backPressCount} 次返回键退出')", null)
                     }
                 }
             }
@@ -92,11 +87,19 @@ class MainActivity : AppCompatActivity() {
                 startActivity(intent)
             } else if (action.startsWith("app:")) {
                 val pkg = action.substring(4)
-                val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                // 双重验证：先尝试常规启动，再尝试电视专属 (Leanback) 启动
+                var launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                if (launchIntent == null) {
+                    launchIntent = packageManager.getLeanbackLaunchIntentForPackage(pkg)
+                }
+                
                 if (launchIntent != null) {
                     startActivity(launchIntent)
                 } else {
-                    runOnUiThread { Toast.makeText(this@MainActivity, "未找到该应用", Toast.LENGTH_SHORT).show() }
+                    // 如果都没找到，呼叫前端显示极简提示
+                    runOnUiThread { 
+                        webView.evaluateJavascript("javascript:showToast('未找到该应用，请检查是否已安装')", null) 
+                    }
                 }
             }
         }
