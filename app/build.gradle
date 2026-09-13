@@ -7,7 +7,7 @@ android {
         applicationId "com.feelcool.tv"
         minSdk 23
         targetSdk 33 
-        versionCode 1; versionName "1.0" 
+        versionCode 2; versionName "1.1" 
     }
     // 明确指定 Java 17 兼容性
     compileOptions {
