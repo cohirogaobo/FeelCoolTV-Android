@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Feel Cool TV - Launcher</title>
+    <style>
+        :root {
+            --glass-bg: rgba(30, 30, 30, 0.45);
+            --glass-border: rgba(255, 255, 255, 0.05);
+            --animation-speed: 0.35s; 
+        }
+
+        ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; opacity: 0 !important; }
+
+        .preload * {
+            -webkit-transition: none !important;
+            transition: none !important;
+            animation: none !important;
+        }
+
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: transparent; color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+            overflow: hidden !important; user-select: none;
+            position: fixed; 
+            -webkit-font-smoothing: antialiased; 
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+        }
+
+        * { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+        .base-layer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #050505; z-index: -2; }
+        
+        .hero-background {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background-size: cover; background-position: center;
+            z-index: -1; transition: background-image 0.5s ease, opacity 0.5s ease;
+            will-change: background-image;
+            background-image: url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564');
+        }
+
+        .hero-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(to right, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 60%, transparent 100%),
+                        linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.05) 40%, transparent 100%);
+            z-index: 1; transition: background 0.5s ease;
+        }
+
+        /* ======== 侧边栏 ======== */
+        .sidebar {
+            position: fixed; left: 20px; top: 20px; bottom: 20px; width: 215px;
+            background: var(--glass-bg); backdrop-filter: blur(35px); -webkit-backdrop-filter: blur(35px);
+            border-radius: 20px; border: 1px solid var(--glass-border); z-index: 10;
+            display: flex; flex-direction: column; padding: 18px 10px; box-sizing: border-box;
+            -webkit-mask-image: -webkit-radial-gradient(white, black); transform: translateZ(0); 
+            transition: width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), padding var(--animation-speed) ease;
+            /* 🔥 修复 1：禁止容器整体滚动，交由内部列表滚动 */
+            overflow: hidden; 
+        }
+        
+        .sidebar.collapsed { width: 68px; padding: 18px 0; }
+
+        .sidebar-header {
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 6px 8px; margin-bottom: 20px; border-radius: 12px;
+            transition: all 0.25s ease; cursor: pointer; outline: none; white-space: nowrap;
+            flex-shrink: 0; /* 防止挤压 */
+        }
+        .sidebar.collapsed .sidebar-header { justify-content: center; padding: 6px 0; }
+        .sidebar-header.focused {
+            background-color: rgba(255, 255, 255, 0.15); 
+            transform: scale3d(1.02, 1.02, 1); box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 2;
+        }
+        
+        .user-left { display: flex; align-items: center; }
+        .user-avatar { 
+            width: 32px; height: 32px; border-radius: 50%; background: #444; 
+            margin-right: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,0.2); 
+            transition: margin var(--animation-speed) ease; flex-shrink: 0;
+        }
+        .sidebar.collapsed .user-avatar { margin-right: 0; }
+        .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        
+        .user-name, .sidebar-clock, .nav-section-title { transition: opacity 0.2s ease, max-width 0.2s ease; opacity: 1; overflow: hidden; }
+        .sidebar.collapsed .user-name, .sidebar.collapsed .sidebar-clock { opacity: 0; max-width: 0; margin: 0; display: none; }
+        .sidebar.collapsed .nav-section-title { opacity: 0; max-height: 0; margin: 0; }
+        
+        .user-name { font-size: 15px; font-weight: 400; letter-spacing: normal; }
+        .sidebar-clock { font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.7); }
+        
+        /* 🔥 修复 1：将 nav-list 设为独立滚动区 */
+        .nav-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; overflow-x: hidden; flex-grow: 1; }
+        .nav-list::-webkit-scrollbar { display: none; }
+        
+        .nav-item { 
+            display: flex; align-items: center; 
+            width: 195px; height: 44px; 
+            padding: 0 12px; margin: 0 auto; box-sizing: border-box; 
+            border-radius: 12px; flex-shrink: 0;
+            font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.65); white-space: nowrap;
+            cursor: pointer; outline: none; transform: translateZ(0); 
+            transition: width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), 
+                        padding var(--animation-speed) ease,
+                        background-color 0.25s ease, color 0.25s ease, transform 0.25s ease; 
+        }
+        
+        .sidebar.collapsed .nav-item { 
+            width: 44px; 
+            padding: 0; 
+            justify-content: center; 
+        }
+        
+        .nav-item svg { width: 20px; height: 20px; margin-right: 12px; fill: currentColor; opacity: 0.8; display: block; flex-shrink: 0; transition: margin 0.25s ease; }
+        .sidebar.collapsed .nav-item svg { margin-right: 0; }
+        
+        .item-text { transition: max-width 0.25s ease, opacity 0.2s ease; max-width: 150px; overflow: hidden; opacity: 1; }
+        .sidebar.collapsed .item-text { max-width: 0; opacity: 0; }
+        
+        .nav-item:focus, .nav-item.focused { 
+            background-color: rgba(255, 255, 255, 0.85); color: rgba(0, 0, 0, 0.9) !important; 
+            transform: scale3d(1.04, 1.04, 1); box-shadow: 0 6px 16px rgba(0,0,0,0.15); z-index: 2; 
+        }
+        .sidebar.collapsed .nav-item.focused svg { color: rgba(0,0,0,0.9); }
+        .nav-item.active-row { background-color: rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.95); }
+        .nav-divider { height: 1px; background: rgba(255,255,255,0.06); margin: 12px 10px; transition: margin 0.25s ease; flex-shrink: 0; }
+        .sidebar.collapsed .nav-divider { margin: 12px 10px; }
+        .nav-section-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 0 10px 8px 10px; flex-shrink: 0; }
+
+        /* ======== 电源子菜单 ======== */
+        .submenu {
+            position: absolute; left: 235px; width: 140px;
+            background: var(--glass-bg); backdrop-filter: blur(35px); -webkit-backdrop-filter: blur(35px);
+            border-radius: 16px; border: 1px solid var(--glass-border); z-index: 20;
+            display: flex; flex-direction: column; padding: 10px; box-sizing: border-box;
+            -webkit-mask-image: -webkit-radial-gradient(white, black);
+            opacity: 0; pointer-events: none; transform: translateX(-15px);
+            transition: opacity 0.25s ease, transform 0.25s ease;
+        }
+        /* 🔥 修复 2：防止子菜单选项继承侧边栏的 195px 宽度导致溢出 */
+        .submenu .nav-item { width: 100%; height: auto; padding: 10px 12px; justify-content: flex-start; }
+        .submenu .nav-item svg { margin-right: 10px; }
+        .submenu.active { opacity: 1; pointer-events: auto; transform: translateX(0); }
+
+        /* ======== 主内容区 ======== */
+        .main-content { 
+            position: absolute; 
+            top: 0; bottom: 0; z-index: 2; 
+            left: 235px;
+            width: calc(100% - 235px); 
+            display: flex; flex-direction: column; justify-content: flex-end; padding: 40px 45px; box-sizing: border-box; 
+            transition: left var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1);
+            overflow: hidden; 
+        }
+        .main-content.expanded { 
+            left: 88px; 
+            width: calc(100% - 88px);
+        }
+
+        .hero-text { margin-bottom: 25px; transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease; display: flex; flex-direction: column; justify-content: flex-end; }
+        .hero-text.lowered { transform: translateY(205px); }
+
+        .brand-title { font-size: 14px; font-weight: 400; letter-spacing: 1px; color: rgba(255,255,255,0.75); margin-bottom: 8px; display: flex; align-items: center; }
+        .brand-title svg { width: 16px !important; height: 16px !important; fill: #fff; display: block; flex-shrink: 0; margin-right: 6px; } 
+        .main-title { font-size: 42px; font-weight: 800; margin: 0 0 6px 0; letter-spacing: -0.5px; line-height: 1.15; max-width: 75%; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .sub-title { font-size: 15px; color: rgba(255,255,255,0.6); max-width: 550px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 400; }
+
+        .carousel-container { 
+            width: 100%; height: 180px; 
+            overflow: visible; 
+            position: relative; 
+        }
+        
+        .carousel-track { 
+            display: flex; gap: 20px; padding: 5px 0; z-index: 5;
+            width: max-content; 
+            -webkit-transform: translateZ(0); transform: translateZ(0);
+            transition: transform 0.35s cubic-bezier(0.25, 1, 0.5, 1); 
+            will-change: transform;
+        }
+
+        .media-item { display: flex; flex-direction: column; gap: 8px; width: 220px; flex-shrink: 0; outline: none; }
+        
+        .card-image-wrapper { 
+            width: 100%; height: 124px; border-radius: 12px; background-color: rgba(255,255,255,0.05); 
+            border: 2px solid transparent; position: relative; overflow: hidden; 
+            transition: transform 0.25s ease, border-color 0.25s ease;
+            -webkit-mask-image: -webkit-radial-gradient(white, black); transform: translateZ(0);
+        }
+        .card-image-wrapper img { width: 100%; height: 100%; object-fit: cover; }
+        .card-info { opacity: 0.6; transition: opacity 0.25s ease, transform 0.25s ease; transform: translateY(-2px); }
+        .card-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: normal; }
+        .card-meta { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+        
+        .media-item:focus .card-image-wrapper, .media-item.focused .card-image-wrapper { 
+            transform: scale3d(1.06, 1.06, 1); border-color: rgba(255,255,255,0.85); box-shadow: 0 12px 24px rgba(0,0,0,0.4); z-index: 10; 
+        }
+        .media-item:focus .card-info, .media-item.focused .card-info { opacity: 1; transform: translateY(0); }
+
+        .toast-container {
+            position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%) translateY(20px);
+            background: rgba(0,0,0,0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            color: #fff; padding: 12px 28px; border-radius: 20px; font-size: 15px; font-weight: 500;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s ease, transform 0.3s ease;
+            z-index: 999; border: 1px solid rgba(255,255,255,0.1); letter-spacing: 0.5px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            overflow: hidden;
+            -webkit-mask-image: -webkit-radial-gradient(white, black);
+        }
+        .toast-container.show { opacity: 1; transform: translateX(-50%) translateY(0) translateZ(0); }
+    </style>
+</head>
+<body class="preload">
+    <div class="base-layer"></div>
+    <div class="hero-background" id="heroBg"></div>
+    <div class="hero-overlay" id="heroOverlay"></div>
+
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header focusable" tabindex="0" data-row="-1" data-col="0" data-no-bg-change="true">
+            <div class="user-left">
+                <div class="user-avatar"><img id="uiAvatar" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="User"></div>
+                <span class="user-name" id="uiUserName">加载中</span>
+            </div>
+            <div class="sidebar-clock" id="sidebarClock">--:--</div>
+        </div>
+
+        <div class="nav-list" id="sidebarNav">
+            <div class="nav-item focusable" tabindex="0" data-row="0" data-col="0" data-section-name="搜索" data-bg="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564" data-title="全局搜索" data-sub="寻找电影与应用">
+                <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg><span class="item-text">搜索</span>
+            </div>
+            
+            <div class="nav-item focusable" tabindex="0" data-row="1" data-col="0" data-section-name="很酷 TV+" data-tmdb="true">
+                <svg viewBox="0 0 24 24"><path d="M10 16.5l6-4.5-6-4.5v9zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg><span class="item-text">现在观看</span>
+            </div>
+            
+            <div class="nav-item focusable" tabindex="0" data-row="2" data-col="0" data-section-name="有线电视" data-bg="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2564" data-title="有线频道" data-sub="电视直播与资讯">
+                <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg><span class="item-text">有线电视</span>
+            </div>
+            
+            <div class="nav-item focusable" tabindex="0" data-row="3" data-col="0" data-section-name="流媒体" data-bg="https://images.unsplash.com/photo-1578022761797-b8636ac1773c?q=80&w=2564" data-title="流媒体" data-sub="在线视频生态">
+                <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/></svg><span class="item-text">流媒体</span>
+            </div>
+            
+            <div class="nav-item focusable" tabindex="0" data-row="4" data-col="0" data-section-name="米家" data-bg="https://images.unsplash.com/photo-1558002038-1055907df827?q=80&w=2564" data-title="智能家居" data-sub="IoT 控制中心" data-action="app:com.xiaomi.smarthome.tv">
+                <svg viewBox="0 0 24 24"><path d="M12 2L2 12h3v8h14v-8h3L12 2zm0 2.8l5 5V18H7v-8.2l5-5zM10 16h4v-5h-4v5z"/></svg><span class="item-text">米家</span>
+            </div>
+            
+            <div class="nav-divider"></div>
+            <div class="nav-section-title">设置与电源</div>
+            
+            <div class="nav-item focusable" tabindex="0" data-row="5" data-col="0" data-section-name="系统设置" data-bg="https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=2564" data-title="系统偏好" data-sub="网络与设备管理" data-action="app:com.xiaomi.mitv.settings">
+                <svg viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49-.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg><span class="item-text">系统设置</span>
+            </div>
+            
+            <div class="nav-item focusable" tabindex="0" data-row="6" data-col="0" data-section-name="电视管家" data-bg="https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=2564" data-title="一键加速" data-sub="清理内存提升性能" data-action="app:com.xiaomi.mitv.tvmanager">
+                <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg><span class="item-text">电视管家</span>
+            </div>
+            
+            <div class="nav-item focusable" tabindex="0" data-row="7" data-col="0" data-no-bg-change="true" data-section-name="电源" data-action="submenu:power">
+                <svg viewBox="0 0 24 24"><path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg><span class="item-text">电源</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="submenu" id="powerSubmenu">
+        <div class="nav-item focusable" tabindex="0" data-row="80" data-col="1" data-no-bg-change="true" data-action="app:com.xiaomi.mitv.hyper.screensaver">
+            <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>屏保
+        </div>
+        <div class="nav-item focusable" tabindex="0" data-row="81" data-col="1" data-no-bg-change="true" data-action="app:com.mitv.tvhome">
+            <svg viewBox="0 0 24 24"><path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>退出
+        </div>
+    </div>
+
+    <div class="main-content" id="mainContent">
+        <div class="hero-text" id="heroText">
+            <div class="brand-title" id="heroBrand">
+                <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>
+                <span id="heroBrandText">很酷 TV+</span>
+            </div>
+            <div class="sub-title" id="heroSub" style="color: #0A84FF; font-weight: 500; margin-bottom: 4px;">启动中</div>
+            <h1 class="main-title" id="heroTitle">连接配置服务器...</h1>
+        </div>
+
+        <div class="carousel-container">
+            <div class="carousel-track" id="mainTrack"></div>
+        </div>
+    </div>
+    
+    <div class="toast-container" id="sysToast"></div>
+
+    <script>
+        var CONFIG_URL = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/main/config.json"; 
+        var globalConfig = null;
+        var currentFocusEl = null; 
+        var toastTimeout;
+        var currentTrackRow = -1;
+        
+        var trendingData = {
+            bg: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564',
+            title: '加载热门中...',
+            sub: '时下热门'
+        };
+
+        var ROW_DATA = {
+            1: [
+                { img: "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?q=80&w=800", bg: "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?q=80&w=800", title: "网易爆米花", sub: "在线影院", action: "app:com.netease.filmlytv.xiaomitv" },
+                { img: "https://images.unsplash.com/photo-1594908900066-3f47337549d8?q=80&w=800", bg: "https://images.unsplash.com/photo-1594908900066-3f47337549d8?q=80&w=800", title: "VidHub", sub: "云端媒体库", action: "app:com.oumi.utility.media.hub" },
+                { img: "https://images.unsplash.com/photo-1593784991095-a205069470b6?q=80&w=800", bg: "https://images.unsplash.com/photo-1593784991095-a205069470b6?q=80&w=800", title: "信号源", sub: "HDMI / AV", action: "app:com.xiaomi.mitv.tvplayer" },
+                { img: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=800", bg: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=800", title: "本地播放器", sub: "外接设备", action: "app:com.xiaomi.mitv.mediaexplorer" }
+            ],
+            2: [
+                { img: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=800", bg: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=800", title: "CCTV 1", sub: "综合频道", action: "iptv:cctv1" },
+                { img: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=800", bg: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=800", title: "CCTV 2", sub: "财经频道", action: "iptv:cctv2" },
+                { img: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=800", bg: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=800", title: "江苏卫视", sub: "地方卫视", action: "iptv:jstv" }
+            ],
+            3: [
+                { img: "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=800", bg: "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=800", title: "云视听小电视", sub: "Bilibili TV", action: "app:com.xiaodianshi.tv.yst" }
+            ]
+        };
+
+        window.showToast = function(msg) {
+            var toast = document.getElementById('sysToast');
+            toast.innerText = msg;
+            toast.classList.add('show');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(function() { toast.classList.remove('show'); }, 2500);
+        };
+
+        function renderTrack(rowId) {
+            if (currentTrackRow === rowId) return; 
+            currentTrackRow = rowId;
+            
+            var track = document.getElementById('mainTrack');
+            var heroText = document.getElementById('heroText');
+            var html = '';
+            
+            if (ROW_DATA[rowId] && ROW_DATA[rowId].length > 0) {
+                ROW_DATA[rowId].forEach(function(item, index) {
+                    var col = index + 1;
+                    html += '<div class="media-item focusable" tabindex="0" data-row="' + rowId + '" data-col="' + col + '" data-bg="' + item.bg + '" data-title="' + item.title + '" data-sub="' + item.sub + '" data-action="' + item.action + '">' +
+                                '<div class="card-image-wrapper"><img src="' + item.img + '" alt="' + item.title + '"></div>' +
+                                '<div class="card-info"><div class="card-title">' + item.title + '</div><div class="card-meta">' + item.sub + '</div></div>' +
+                            '</div>';
+                });
+                track.innerHTML = html;
+                void track.offsetHeight;
+                track.style.transform = 'translateX(0px)';
+                heroText.classList.remove('lowered');
+            } else {
+                track.innerHTML = '';
+                heroText.classList.add('lowered');
+            }
+        }
+
+        function initApp() {
+            fetch(CONFIG_URL)
+                .then(function(response) {
+                    if (response.ok) return response.json();
+                    throw new Error("Config error");
+                })
+                .then(function(data) {
+                    globalConfig = data;
+                    if(globalConfig && globalConfig.user) {
+                        document.getElementById('uiUserName').innerText = globalConfig.user.name || 'User';
+                        if(globalConfig.user.avatar_url) document.getElementById('uiAvatar').src = globalConfig.user.avatar_url;
+                    }
+                    
+                    if (globalConfig.rows) {
+                        ROW_DATA = globalConfig.rows;
+                    }
+                    
+                    if (currentTrackRow > 0) {
+                        var tempRow = currentTrackRow;
+                        currentTrackRow = -1; 
+                        renderTrack(tempRow);
+                    }
+                    
+                    fetchTrendingShow();
+                })
+                .catch(function(error) { removeNativeSplash(); });
+
+            var initial = document.querySelector('.focusable[data-row="1"][data-col="0"]');
+            if(initial) {
+                setTimeout(function() {
+                    setFocus(initial);
+                }, 150);
+                setTimeout(function() {
+                    document.body.classList.remove('preload');
+                }, 300);
+            }
+        }
+
+        function fetchTrendingShow() {
+            if (!globalConfig || !globalConfig.api || !globalConfig.api.tmdb_api_key) {
+                removeNativeSplash(); return;
+            }
+            var tmdbApiKey = globalConfig.api.tmdb_api_key;
+
+            fetch('/tmdb-api/trending/tv/day?api_key=' + tmdbApiKey + '&language=zh-CN')
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data && data.results && data.results.length > 0) {
+                        var show = data.results[0];
+                        trendingData.bg = '/tmdb-img/original' + show.backdrop_path;
+                        trendingData.title = show.name || show.title;
+                        trendingData.sub = '时下热门';
+                        
+                        if (currentFocusEl && currentFocusEl.getAttribute('data-tmdb') === 'true') {
+                            var svgHTML = document.querySelector('.focusable[data-row="1"][data-col="0"] svg').outerHTML;
+                            updateHeroUI(trendingData.bg, trendingData.title, trendingData.sub, '很酷 TV+', svgHTML);
+                        }
+                    }
+                    removeNativeSplash(); 
+                })
+                .catch(function(e) { removeNativeSplash(); });
+        }
+
+        function removeNativeSplash() {
+            setTimeout(function() {
+                if (window.FeelCoolTV && window.FeelCoolTV.hideSplash) window.FeelCoolTV.hideSplash();
+            }, 200); 
+        }
+
+        function updateHeroUI(bg, title, sub, brandName, svgIconHTML) {
+            if(bg) document.getElementById('heroBg').style.backgroundImage = "url('" + bg + "')";
+            document.getElementById('heroTitle').innerText = title;
+            document.getElementById('heroSub').innerText = sub;
+            
+            var brandEl = document.getElementById('heroBrand');
+            if (svgIconHTML) {
+                brandEl.innerHTML = svgIconHTML + '<span id="heroBrandText">' + brandName + '</span>';
+            } else {
+                document.getElementById('heroBrandText').innerText = brandName;
+            }
+            
+            document.getElementById('heroSub').style.color = (sub === '时下热门') ? '#0A84FF' : 'rgba(255,255,255,0.6)';
+        }
+
+        function updateClock() {
+            var now = new Date();
+            var hours = now.getHours();
+            var minutes = now.getMinutes();
+            hours = hours < 10 ? '0' + hours : hours;
+            minutes = minutes < 10 ? '0' + minutes : minutes;
+            document.getElementById('sidebarClock').innerText = hours + ':' + minutes;
+        }
+        setInterval(updateClock, 1000); updateClock();
+
+        function setFocus(targetEl) {
+            if (!targetEl) return;
+            
+            if (currentFocusEl) currentFocusEl.classList.remove('focused');
+            currentFocusEl = targetEl;
+            targetEl.focus();
+            targetEl.classList.add('focused');
+
+            var row = parseInt(targetEl.getAttribute('data-row'));
+            var col = parseInt(targetEl.getAttribute('data-col'));
+
+            if (col === 0 && row >= 1 && row <= 3) {
+                renderTrack(row);
+            } else if (col === 0 && (row === 0 || row >= 4)) {
+                renderTrack(-1);
+            }
+
+            var sidebar = document.getElementById('sidebar');
+            var mainContent = document.getElementById('mainContent');
+            
+            if (col >= 1 && row < 80) {
+                sidebar.classList.add('collapsed');
+                mainContent.classList.add('expanded');
+            } else if (col === 0 || row >= 80) {
+                sidebar.classList.remove('collapsed');
+                mainContent.classList.remove('expanded');
+            }
+
+            document.querySelectorAll('.active-row').forEach(function(el){ el.classList.remove('active-row'); });
+            if (col > 0 && row < 80) {
+                var sidebarItem = document.querySelector('.focusable[data-row="' + row + '"][data-col="0"]');
+                if (sidebarItem) sidebarItem.classList.add('active-row');
+            }
+
+            if (row < 7 || row > 81) {
+                document.getElementById('powerSubmenu').classList.remove('active');
+            }
+
+            var noBgChange = targetEl.getAttribute('data-no-bg-change') === 'true';
+            var isTMDB = targetEl.getAttribute('data-tmdb') === 'true';
+            var sectionName = targetEl.getAttribute('data-section-name') || '很酷 TV+';
+
+            var svgIconHTML = '';
+            if (col === 0) {
+                var svgEl = targetEl.querySelector('svg');
+                if (svgEl) svgIconHTML = svgEl.outerHTML;
+            } else if (row < 80) {
+                var activeSidebar = document.querySelector('.nav-item.active-row');
+                if (activeSidebar) {
+                    var svgEl = activeSidebar.querySelector('svg');
+                    if (svgEl) svgIconHTML = svgEl.outerHTML;
+                }
+            }
+
+            if (!noBgChange) {
+                if (isTMDB) {
+                    updateHeroUI(trendingData.bg, trendingData.title, trendingData.sub, sectionName, svgIconHTML);
+                } else {
+                    var bg = targetEl.getAttribute('data-bg');
+                    var title = targetEl.getAttribute('data-title');
+                    var sub = targetEl.getAttribute('data-sub');
+                    if (bg && title) updateHeroUI(bg, title, sub, sectionName, svgIconHTML);
+                }
+            }
+
+            if (col > 0 && row > 0 && row < 7) {
+                var track = document.getElementById('mainTrack');
+                var offset = col > 1 ? (col - 1) * 240 : 0;
+                if (track) track.style.transform = 'translateX(-' + offset + 'px)';
+            }
+        }
+
+        window.handleHardwareBack = function() {
+            var isSubmenuOpen = document.getElementById('powerSubmenu').classList.contains('active');
+            if (isSubmenuOpen) {
+                document.getElementById('powerSubmenu').classList.remove('active');
+                setFocus(document.querySelector('.focusable[data-row="7"][data-col="0"]'));
+                return "true";
+            }
+            if (currentFocusEl) {
+                var col = parseInt(currentFocusEl.getAttribute('data-col'));
+                if (col > 0) {
+                    var row = parseInt(currentFocusEl.getAttribute('data-row'));
+                    setFocus(document.querySelector('.focusable[data-row="' + row + '"][data-col="0"]'));
+                    return "true";
+                }
+            }
+            return "false"; 
+        };
+
+        function getVisibleFocusables() {
+            var all = Array.prototype.slice.call(document.querySelectorAll('.focusable'));
+            return all.filter(function(el) { return el.offsetParent !== null; }); 
+        }
+
+        var lastKeyTime = 0;
+        document.addEventListener('keydown', function(e) {
+            var now = Date.now();
+            if (now - lastKeyTime < 180) { e.preventDefault(); return; }
+            lastKeyTime = now;
+
+            if (!currentFocusEl) return;
+            var row = parseInt(currentFocusEl.getAttribute('data-row'));
+            var col = parseInt(currentFocusEl.getAttribute('data-col'));
+            var nextEl = currentFocusEl;
+            var visibles = getVisibleFocusables();
+
+            function findNext(r, c) {
+                for (var i = 0; i < visibles.length; i++) {
+                    if (parseInt(visibles[i].getAttribute('data-row')) === r && parseInt(visibles[i].getAttribute('data-col')) === c) return visibles[i];
+                }
+                return null;
+            }
+
+            var isSubmenuOpen = document.getElementById('powerSubmenu').classList.contains('active');
+            if (row >= 80) { 
+                e.preventDefault();
+                switch(e.key) {
+                    case 'ArrowDown':
+                        if (row === 80) setFocus(document.querySelector('.focusable[data-row="81"]'));
+                        break;
+                    case 'ArrowUp':
+                        if (row === 81) setFocus(document.querySelector('.focusable[data-row="80"]'));
+                        break;
+                    case 'ArrowLeft':
+                        document.getElementById('powerSubmenu').classList.remove('active');
+                        setFocus(document.querySelector('.focusable[data-row="7"][data-col="0"]'));
+                        break;
+                    case 'Enter':
+                        var action = currentFocusEl.getAttribute('data-action');
+                        if (window.FeelCoolTV && window.FeelCoolTV.executeAction) window.FeelCoolTV.executeAction(action, "");
+                        break;
+                }
+                return; 
+            }
+
+            switch(e.key) {
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (col === 0) {
+                        nextEl = findNext(row + 1, 0) || currentFocusEl;
+                    } else {
+                        nextEl = findNext(row, 0) || currentFocusEl;
+                    }
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (col === 0) {
+                        nextEl = findNext(row - 1, 0) || currentFocusEl;
+                    } else {
+                        nextEl = findNext(row, 0) || currentFocusEl;
+                    }
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    if (col === 0) {
+                        if (row === 7 && isSubmenuOpen) {
+                            nextEl = findNext(80, 1) || currentFocusEl; 
+                        } else {
+                            nextEl = findNext(row, 1) || currentFocusEl; 
+                        }
+                    } else {
+                        nextEl = findNext(row, col + 1) || currentFocusEl;
+                    }
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    if (col > 1) {
+                        nextEl = findNext(row, col - 1) || currentFocusEl;
+                    } else if (col === 1) {
+                        nextEl = findNext(row, 0) || currentFocusEl; 
+                    }
+                    break;
+                case 'Enter':
+                    e.preventDefault();
+                    var action = currentFocusEl.getAttribute('data-action');
+                    
+                    if (action === 'submenu:power') {
+                        var menu = document.getElementById('powerSubmenu');
+                        var rect = currentFocusEl.getBoundingClientRect();
+                        var bottomOffset = window.innerHeight - rect.bottom;
+                        menu.style.bottom = bottomOffset + 'px'; 
+                        menu.style.top = 'auto';
+
+                        menu.classList.toggle('active');
+                        if(menu.classList.contains('active')){
+                             setTimeout(function(){ setFocus(document.querySelector('.focusable[data-row="80"]')); }, 50);
+                        }
+                    } else if (action) {
+                        if (window.FeelCoolTV && window.FeelCoolTV.executeAction) window.FeelCoolTV.executeAction(action, document.getElementById('heroTitle').innerText);
+                    } else if (col === 0) {
+                        var firstCard = findNext(row, 1);
+                        if (firstCard) nextEl = firstCard;
+                    }
+                    break;
+            }
+            if (nextEl !== currentFocusEl) setFocus(nextEl);
+        });
+
+        initApp();
+    </script>
+</body>
+</html>
