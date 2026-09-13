@@ -6,6 +6,9 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
 
+    <!-- 新增这一行：允许你的桌面应用唤起电视里的任何第三方 APP -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    
     <application 
         android:label="很酷TV" 
         android:icon="@drawable/icon"
