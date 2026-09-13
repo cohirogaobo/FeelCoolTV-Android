@@ -9,11 +9,12 @@
     <application 
         android:label="很酷TV" 
         android:icon="@drawable/icon"
+        android:logo="@drawable/icon"
         android:theme="@style/Theme.AppCompat.NoActionBar" 
         android:usesCleartextTraffic="true"> <!-- 允许加载 http 的内网 IP -->
         
         <!-- 主界面：WebView 容器 -->
-        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape">
+        <activity android:name=".MainActivity" android:icon="@drawable/icon" android:logo="@drawable/icon" android:exported="true" android:screenOrientation="landscape">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <!-- 关键修复：加入标准手机版 Launcher 标签，专治国内魔改系统不显示图标的问题 -->
