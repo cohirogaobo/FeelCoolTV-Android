@@ -8,6 +8,7 @@
 
     <!-- 新增这一行：允许你的桌面应用唤起电视里的任何第三方 APP -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     
     <application 
         android:label="很酷TV" 
@@ -15,6 +16,11 @@
         android:logo="@drawable/icon"
         android:theme="@style/Theme.AppCompat.NoActionBar" 
         android:usesCleartextTraffic="true"> <!-- 允许加载 http 的内网 IP -->
+        <receiver android:name=".BootReceiver" android:exported="true">
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
         
         <!-- 主界面：WebView 容器 -->
         <activity android:name=".MainActivity" android:launchMode="singleTask" android:clearTaskOnLaunch="true" android:stateNotNeeded="true" android:excludeFromRecents="true" android:icon="@drawable/icon" android:logo="@drawable/icon" android:exported="true" android:screenOrientation="landscape">
