@@ -48,7 +48,6 @@
             z-index: 1; transition: background 0.5s ease;
         }
 
-        /* ======== 侧边栏 ======== */
         .sidebar {
             position: fixed; left: 20px; top: 20px; bottom: 20px; width: 215px;
             background: var(--glass-bg); backdrop-filter: blur(35px); -webkit-backdrop-filter: blur(35px);
@@ -125,7 +124,6 @@
         .sidebar.collapsed .nav-divider { margin: 12px 10px; }
         .nav-section-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 0 10px 8px 10px; flex-shrink: 0; }
 
-        /* ======== 子菜单公共样式 ======== */
         .submenu {
             position: absolute; left: 235px; width: 150px;
             background: var(--glass-bg); backdrop-filter: blur(35px); -webkit-backdrop-filter: blur(35px);
@@ -139,7 +137,6 @@
         .submenu .nav-item svg { margin-right: 10px; }
         .submenu.active { opacity: 1; pointer-events: auto; transform: translateX(0); }
 
-        /* ======== 主内容区 ======== */
         .main-content { 
             position: absolute; top: 0; bottom: 0; z-index: 2; left: 235px; width: calc(100% - 235px); 
             display: flex; flex-direction: column; justify-content: flex-end; padding: 40px 45px; box-sizing: border-box; 
@@ -206,7 +203,6 @@
     <div class="hero-overlay" id="heroOverlay"></div>
 
     <div class="sidebar" id="sidebar">
-        <!-- 用户菜单入口 -->
         <div class="sidebar-header focusable" tabindex="0" data-row="-1" data-col="0" data-no-bg-change="true" data-action="submenu:user">
             <div class="user-left">
                 <div class="user-avatar"><img id="uiAvatar" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="User"></div>
@@ -245,7 +241,6 @@
         </div>
     </div>
 
-    <!-- 用户菜单 -->
     <div class="submenu" id="userSubmenu">
         <div class="nav-item focusable" tabindex="0" data-row="90" data-col="1" data-no-bg-change="true" data-action="app:com.xiaomi.smarthome.tv">
             <svg viewBox="0 0 24 24"><path d="M12 2L2 12h3v8h14v-8h3L12 2zm0 2.8l5 5V18H7v-8.2l5-5zM10 16h4v-5h-4v5z"/></svg>我的家庭
@@ -255,7 +250,6 @@
         </div>
     </div>
 
-    <!-- 电源菜单 -->
     <div class="submenu" id="powerSubmenu">
         <div class="nav-item focusable" tabindex="0" data-row="80" data-col="1" data-no-bg-change="true" data-action="app:com.xiaomi.mitv.hyper.screensaver">
             <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>屏幕保护
@@ -284,8 +278,10 @@
 
     <script>
         var CONFIG_URL = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/main/config.json"; 
-        var TMDB_API_BASE = "https://tmdb-proxy.gaobo2002.workers.dev/3";
-        var TMDB_IMG_BASE = "https://tmdb-proxy.gaobo2002.workers.dev/t/p/original";
+        
+        // 🔥 修复：使用国内稳定的公益代理池进行 TMDB 请求，彻底解决 Workers 被墙问题
+        var TMDB_API_BASE = "https://tmdb.whtzcloud.top/3";
+        var TMDB_IMG_BASE = "https://tmdb.whtzcloud.top/t/p/original";
 
         var globalConfig = {
             user: {
@@ -307,20 +303,21 @@
             sub: '时下热门'
         };
 
+        // 🔥 修复：这里展示了 `img` (竖版海报) 与 `bg` (横版大背景) 是完全可以独立分离配置的
         var ROW_DATA = {
             1: [
-                { img: "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?q=80&w=800", bg: "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?q=80&w=800", title: "网易爆米花", sub: "在线影院", action: "app:com.netease.filmlytv.xiaomitv" },
-                { img: "https://images.unsplash.com/photo-1594908900066-3f47337549d8?q=80&w=800", bg: "https://images.unsplash.com/photo-1594908900066-3f47337549d8?q=80&w=800", title: "VidHub", sub: "云端媒体库", action: "app:com.oumi.utility.media.hub" },
-                { img: "https://images.unsplash.com/photo-1593784991095-a205069470b6?q=80&w=800", bg: "https://images.unsplash.com/photo-1593784991095-a205069470b6?q=80&w=800", title: "信号源", sub: "HDMI / AV", action: "app:com.xiaomi.mitv.tvplayer" },
-                { img: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=800", bg: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=800", title: "本地播放器", sub: "外接设备", action: "app:com.xiaomi.mitv.mediaexplorer" }
+                { img: "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?q=80&w=200", bg: "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?q=80&w=1920", title: "网易爆米花", sub: "在线影院", action: "app:com.netease.filmlytv.xiaomitv" },
+                { img: "https://images.unsplash.com/photo-1594908900066-3f47337549d8?q=80&w=200", bg: "https://images.unsplash.com/photo-1594908900066-3f47337549d8?q=80&w=1920", title: "VidHub", sub: "云端媒体库", action: "app:com.oumi.utility.media.hub" },
+                { img: "https://images.unsplash.com/photo-1593784991095-a205069470b6?q=80&w=200", bg: "https://images.unsplash.com/photo-1593784991095-a205069470b6?q=80&w=1920", title: "信号源", sub: "HDMI / AV", action: "app:com.xiaomi.mitv.tvplayer" },
+                { img: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=200", bg: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1920", title: "本地播放器", sub: "外接设备", action: "app:com.xiaomi.mitv.mediaexplorer" }
             ],
             2: [
-                { img: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=800", bg: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=800", title: "CCTV 1", sub: "综合频道", action: "iptv:cctv1" },
-                { img: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=800", bg: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=800", title: "CCTV 2", sub: "财经频道", action: "iptv:cctv2" },
-                { img: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=800", bg: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=800", title: "江苏卫视", sub: "地方卫视", action: "iptv:jstv" }
+                { img: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=200", bg: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=1920", title: "CCTV 1", sub: "综合频道", action: "iptv:cctv1" },
+                { img: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=200", bg: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=1920", title: "CCTV 2", sub: "财经频道", action: "iptv:cctv2" },
+                { img: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=200", bg: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=1920", title: "江苏卫视", sub: "地方卫视", action: "iptv:jstv" }
             ],
             3: [
-                { img: "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=800", bg: "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=800", title: "云视听小电视", sub: "Bilibili TV", action: "app:com.xiaodianshi.tv.yst" }
+                { img: "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=200", bg: "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1920", title: "云视听小电视", sub: "Bilibili TV", action: "app:com.xiaodianshi.tv.yst" }
             ]
         };
 
@@ -353,6 +350,7 @@
             if (ROW_DATA[rowId] && ROW_DATA[rowId].length > 0) {
                 ROW_DATA[rowId].forEach(function(item, index) {
                     var col = index + 1;
+                    // img 和 bg 完全分离调用
                     html += '<div class="media-item focusable" tabindex="0" data-row="' + rowId + '" data-col="' + col + '" data-bg="' + item.bg + '" data-title="' + item.title + '" data-sub="' + item.sub + '" data-action="' + item.action + '">' +
                                 '<div class="card-image-wrapper"><img src="' + item.img + '" alt="' + item.title + '"></div>' +
                                 '<div class="card-info"><div class="card-title">' + item.title + '</div><div class="card-meta">' + item.sub + '</div></div>' +
@@ -376,12 +374,9 @@
         }
 
         function initApp() {
-            // 立即解除开屏遮挡
             removeNativeSplash();
-            
             var configLoaded = false;
             
-            // 加入 2 秒并发超时机制，防止国内 GFW 阻塞 GitHub RAW 导致界面假死
             var configTimer = setTimeout(function() {
                 if (!configLoaded) {
                     configLoaded = true;
@@ -431,9 +426,7 @@
         }
 
         function fetchTrendingShow() {
-            if (!globalConfig || !globalConfig.api || !globalConfig.api.tmdb_api_key) {
-                return;
-            }
+            if (!globalConfig || !globalConfig.api || !globalConfig.api.tmdb_api_key) return;
             var tmdbApiKey = globalConfig.api.tmdb_api_key;
 
             fetch(TMDB_API_BASE + '/trending/tv/day?api_key=' + tmdbApiKey + '&language=zh-CN')
@@ -600,14 +593,12 @@
                 return null;
             }
 
-            if (row >= 80 || row === -1) { 
+            if (row >= 80) { 
                 e.preventDefault();
                 var isUserMenu = row >= 90;
-                var isPowerMenu = row >= 80 && row < 90;
                 
                 switch(e.key) {
                     case 'ArrowDown':
-                        if (row === -1) nextEl = findNext(0, 0);
                         if (row === 80) nextEl = findNext(81, 1);
                         if (row === 90) nextEl = findNext(91, 1);
                         break;
@@ -619,31 +610,17 @@
                         if (isUserMenu) {
                             document.getElementById('userSubmenu').classList.remove('active');
                             nextEl = findNext(-1, 0);
-                        } else if (isPowerMenu) {
+                        } else {
                             document.getElementById('powerSubmenu').classList.remove('active');
                             nextEl = findNext(5, 0);
                         }
                         break;
-                    case 'ArrowRight':
-                        break;
                     case 'Enter':
                         var action = currentFocusEl.getAttribute('data-action');
-                        
-                        if (action === 'submenu:user') {
-                            var menu = document.getElementById('userSubmenu');
-                            var rect = currentFocusEl.getBoundingClientRect();
-                            menu.style.top = (rect.bottom + 5) + 'px'; 
-                            menu.style.bottom = 'auto';
-
-                            menu.classList.add('active');
-                            setTimeout(function(){ setFocus(findNext(90, 1)); }, 50);
-                            return;
-                        }
-                        
                         if (isUserMenu) {
                             document.getElementById('userSubmenu').classList.remove('active');
                             setFocus(findNext(-1, 0));
-                        } else if (isPowerMenu) {
+                        } else {
                             document.getElementById('powerSubmenu').classList.remove('active');
                             setFocus(findNext(5, 0));
                         }
@@ -683,7 +660,11 @@
                 case 'ArrowRight':
                     e.preventDefault();
                     if (col === 0) {
-                        nextEl = findNext(row, 1) || currentFocusEl; 
+                        if (row === -1) {
+                            nextEl = findNext(1, 1) || currentFocusEl; 
+                        } else {
+                            nextEl = findNext(row, 1) || currentFocusEl; 
+                        }
                     } else {
                         nextEl = findNext(row, col + 1) || currentFocusEl;
                     }
@@ -700,7 +681,15 @@
                     e.preventDefault();
                     var action = currentFocusEl.getAttribute('data-action');
                     
-                    if (action === 'submenu:power') {
+                    if (action === 'submenu:user') {
+                        var menu = document.getElementById('userSubmenu');
+                        var rect = currentFocusEl.getBoundingClientRect();
+                        menu.style.top = (rect.bottom + 5) + 'px'; 
+                        menu.style.bottom = 'auto';
+
+                        menu.classList.add('active');
+                        setTimeout(function(){ setFocus(findNext(90, 1)); }, 50);
+                    } else if (action === 'submenu:power') {
                         var menu = document.getElementById('powerSubmenu');
                         var rect = currentFocusEl.getBoundingClientRect();
                         var bottomOffset = window.innerHeight - rect.bottom;
