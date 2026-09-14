@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=1920, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- 🔥 核心防御机制：彻底屏蔽 HTTP Referer，破解豆瓣图片防盗链拦截，确保海报在电视上正常显示 -->
+    <meta name="referrer" content="no-referrer">
     <title>Feel Cool TV - Launcher</title>
     <style>
         :root {
@@ -48,13 +50,12 @@
             z-index: 1; transition: background 0.5s ease;
         }
 
-        /* ======== 侧边栏 ======== */
-        /* 🔥 修复：彻底移除 translateZ 和 mask-image，解除 GPU 缓存死锁，让毛玻璃实时刷新 */
         .sidebar {
             position: fixed; left: 20px; top: 20px; bottom: 20px; width: 215px;
             background: var(--glass-bg); backdrop-filter: blur(35px); -webkit-backdrop-filter: blur(35px);
             border-radius: 20px; border: 1px solid var(--glass-border); z-index: 10;
             display: flex; flex-direction: column; padding: 18px 10px; box-sizing: border-box;
+            -webkit-mask-image: -webkit-radial-gradient(white, black); transform: translateZ(0); 
             transition: width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), padding var(--animation-speed) ease;
             overflow: hidden; 
         }
@@ -101,7 +102,7 @@
             padding: 0 12px; margin: 0 auto; box-sizing: border-box; 
             border-radius: 12px; flex-shrink: 0;
             font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.65); white-space: nowrap;
-            cursor: pointer; outline: none; 
+            cursor: pointer; outline: none; transform: translateZ(0); 
             transition: width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), 
                         padding var(--animation-speed) ease,
                         background-color 0.25s ease, color 0.25s ease, transform 0.25s ease; 
@@ -125,7 +126,6 @@
         .sidebar.collapsed .nav-divider { margin: 12px 10px; }
         .nav-section-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 0 10px 8px 10px; flex-shrink: 0; }
 
-        /* ======== 主内容区 ======== */
         .main-content { 
             position: absolute; top: 0; bottom: 0; z-index: 2; left: 235px; width: calc(100% - 235px); 
             display: flex; flex-direction: column; justify-content: flex-end; padding: 40px 45px; box-sizing: border-box; 
@@ -206,7 +206,7 @@
                 <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg><span class="item-text">搜索</span>
             </div>
             
-            <div class="nav-item focusable" tabindex="0" data-row="1" data-col="0" data-section-name="很酷 TV+" data-tmdb="true">
+            <div class="nav-item focusable" tabindex="0" data-row="1" data-col="0" data-section-name="很酷 TV+" data-api-bind="douban">
                 <svg viewBox="0 0 24 24"><path d="M10 16.5l6-4.5-6-4.5v9zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg><span class="item-text">现在观看</span>
             </div>
             
@@ -247,17 +247,10 @@
     <script>
         var CONFIG_URL = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/main/config.json"; 
         
-        // 重新用回你自己的完美代理，抛弃那个国内节点
-        var TMDB_API_BASE = "https://feelcool.netlify.app/tmdb-api";
-        var TMDB_IMG_BASE = "https://feelcool.netlify.app/tmdb-img";;
-
         var globalConfig = {
             user: {
                 name: "扣扣扣漏",
                 avatar_url: "https://feelcool.netlify.app/assets/GB.jpg"
-            },
-            api: {
-                tmdb_api_key: "f7762624a95e4c3823500736d40162cd"
             }
         };
 
@@ -362,7 +355,6 @@
                         configLoaded = true;
                         clearTimeout(configTimer);
                         
-                        if (data && data.api) globalConfig.api = data.api;
                         if (data && data.user) globalConfig.user = data.user;
                         if (data && data.rows) ROW_DATA = data.rows;
                         
@@ -392,25 +384,29 @@
         }
 
         function fetchTrendingShow() {
-            if (!globalConfig || !globalConfig.api || !globalConfig.api.tmdb_api_key) return;
-            var tmdbApiKey = globalConfig.api.tmdb_api_key;
+            // 🔥 接入豆瓣电影官方开放的 AJAX 数据接口，精准提取高分美剧，绝赞规避 API Key 和翻墙问题！
+            var doubanApi = 'https://movie.douban.com/j/search_subjects?type=tv&tag=美剧&sort=recommend&page_limit=10';
 
-            fetch(TMDB_API_BASE + '/trending/tv/day?api_key=' + tmdbApiKey + '&language=zh-CN')
+            fetch(doubanApi)
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
-                    if (data && data.results && data.results.length > 0) {
-                        var show = data.results[0];
-                        trendingData.bg = TMDB_IMG_BASE + show.backdrop_path;
-                        trendingData.title = show.name || show.title;
-                        trendingData.sub = '时下热门';
+                    if (data && data.subjects && data.subjects.length > 0) {
+                        // 随机抽取一个热门美剧，保证每次开机的新鲜感
+                        var randomIndex = Math.floor(Math.random() * data.subjects.length);
+                        var show = data.subjects[randomIndex];
                         
-                        if (currentFocusEl && currentFocusEl.getAttribute('data-tmdb') === 'true') {
+                        // 豆瓣返回的是高画质竖版海报，在横屏的高斯模糊叠加下有着极好的光影层次感
+                        trendingData.bg = show.pic; 
+                        trendingData.title = show.title;
+                        trendingData.sub = '豆瓣高分美剧 · ' + show.rate + '分';
+                        
+                        if (currentFocusEl && currentFocusEl.getAttribute('data-api-bind') === 'douban') {
                             var svgHTML = document.querySelector('.focusable[data-row="1"][data-col="0"] svg').outerHTML;
                             updateHeroUI(trendingData.bg, trendingData.title, trendingData.sub, '很酷 TV+', svgHTML);
                         }
                     }
                 })
-                .catch(function(e) { console.error("TMDB Fetch Error", e); });
+                .catch(function(e) { console.error("Douban Fetch Error", e); });
         }
 
         function updateHeroUI(bg, title, sub, brandName, svgIconHTML) {
@@ -425,7 +421,7 @@
                 document.getElementById('heroBrandText').innerText = brandName;
             }
             
-            document.getElementById('heroSub').style.color = (sub === '时下热门') ? '#0A84FF' : 'rgba(255,255,255,0.6)';
+            document.getElementById('heroSub').style.color = (sub.indexOf('豆瓣') !== -1) ? '#0A84FF' : 'rgba(255,255,255,0.6)';
         }
 
         function updateClock() {
@@ -458,29 +454,29 @@
             var sidebar = document.getElementById('sidebar');
             var mainContent = document.getElementById('mainContent');
             
-            if (col >= 1 && row < 80) {
+            if (col >= 1) {
                 sidebar.classList.add('collapsed');
                 mainContent.classList.add('expanded');
-            } else if (col === 0 || row >= 80 || row === -1) {
+            } else if (col === 0 || row === -1) {
                 sidebar.classList.remove('collapsed');
                 mainContent.classList.remove('expanded');
             }
 
             document.querySelectorAll('.active-row').forEach(function(el){ el.classList.remove('active-row'); });
-            if (col > 0 && row < 80) {
+            if (col > 0) {
                 var sidebarItem = document.querySelector('.focusable[data-row="' + row + '"][data-col="0"]');
                 if (sidebarItem) sidebarItem.classList.add('active-row');
             }
 
             var noBgChange = targetEl.getAttribute('data-no-bg-change') === 'true';
-            var isTMDB = targetEl.getAttribute('data-tmdb') === 'true';
+            var isDouban = targetEl.getAttribute('data-api-bind') === 'douban';
             var sectionName = targetEl.getAttribute('data-section-name') || '很酷 TV+';
 
             var svgIconHTML = '';
             if (col === 0 || row === -1) {
                 var svgEl = targetEl.querySelector('svg');
                 if (svgEl) svgIconHTML = svgEl.outerHTML;
-            } else if (row < 80) {
+            } else {
                 var activeSidebar = document.querySelector('.nav-item.active-row');
                 if (activeSidebar) {
                     var svgEl = activeSidebar.querySelector('svg');
@@ -489,7 +485,7 @@
             }
 
             if (!noBgChange) {
-                if (isTMDB) {
+                if (isDouban) {
                     updateHeroUI(trendingData.bg, trendingData.title, trendingData.sub, sectionName, svgIconHTML);
                 } else {
                     var bg = targetEl.getAttribute('data-bg');
@@ -586,7 +582,6 @@
                 case 'Enter':
                     e.preventDefault();
                     var action = currentFocusEl.getAttribute('data-action');
-                    
                     if (action) {
                         if (window.FeelCoolTV && window.FeelCoolTV.executeAction) {
                             window.FeelCoolTV.executeAction(action, document.getElementById('heroTitle').innerText);
