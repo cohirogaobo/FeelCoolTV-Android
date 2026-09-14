@@ -33,6 +33,8 @@ class MainActivity : AppCompatActivity() {
             useWideViewPort = true
             loadWithOverviewMode = true
             textZoom = 100 
+            allowFileAccessFromFileURLs = true
+            allowUniversalAccessFromFileURLs = true
         }
         webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
         webView.isFocusable = true
