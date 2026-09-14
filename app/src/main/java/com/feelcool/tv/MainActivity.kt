@@ -1,5 +1,6 @@
 package com.feelcool.tv
 
+import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
@@ -51,7 +52,6 @@ class MainActivity : AppCompatActivity() {
         layout.addView(splashView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         setContentView(layout)
 
-        // 🔥 修改点：不再请求 Netlify，直接从本地 APK 内部极速加载 HTML
         webView.loadUrl("file:///android_asset/index.html")
     }
 
@@ -88,32 +88,36 @@ class MainActivity : AppCompatActivity() {
             } else if (action.startsWith("app:")) {
                 val pkg = action.substring(4)
                 
-                // 🔥 修改点：针对小米等系统隐藏 Launcher 的暴力唤醒策略
                 var launchIntent = packageManager.getLeanbackLaunchIntentForPackage(pkg)
-                
                 if (launchIntent == null) {
                     launchIntent = packageManager.getLaunchIntentForPackage(pkg)
                 }
                 
-                // 如果常规意图和电视意图都拿不到（比如米家或信号源），采用强制隐式意图匹配
+                // 🔥 修复：针对小米系统隐藏应用的强制唤醒白名单
                 if (launchIntent == null) {
-                    launchIntent = Intent(Intent.ACTION_MAIN)
-                    launchIntent.setPackage(pkg)
-                    launchIntent.addCategory(Intent.CATEGORY_DEFAULT)
-                    launchIntent.addCategory(Intent.CATEGORY_INFO)
-                    // 验证该隐式意图是否真的能解析到应用，防崩溃
-                    if (launchIntent.resolveActivity(packageManager) == null) {
-                        launchIntent = null
+                    val targetActivity = when (pkg) {
+                        "com.xiaomi.mitv.tvplayer" -> "com.xiaomi.mitv.tvplayer.MainActivity"
+                        "com.xiaomi.mitv.mediaexplorer" -> "com.xiaomi.mitv.mediaexplorer.MainActivity"
+                        "com.xiaomi.mitv.hyper.screensaver" -> "com.xiaomi.mitv.hyper.screensaver.MainActivity"
+                        "com.xiaomi.smarthome.tv" -> "com.xiaomi.smarthome.tv.MainActivity"
+                        else -> null
+                    }
+                    
+                    if (targetActivity != null) {
+                        launchIntent = Intent(Intent.ACTION_MAIN)
+                        launchIntent.component = ComponentName(pkg, targetActivity)
                     }
                 }
                 
                 if (launchIntent != null) {
                     launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(launchIntent)
-                } else {
-                    runOnUiThread { 
-                        webView.evaluateJavascript("javascript:showToast('未找到应用或该应用禁止外部唤起')", null) 
+                    try {
+                        startActivity(launchIntent)
+                    } catch (e: Exception) {
+                        runOnUiThread { webView.evaluateJavascript("javascript:showToast('应用组件被系统限制启动')", null) }
                     }
+                } else {
+                    runOnUiThread { webView.evaluateJavascript("javascript:showToast('未找到应用，请确认是否安装')", null) }
                 }
             }
         }
