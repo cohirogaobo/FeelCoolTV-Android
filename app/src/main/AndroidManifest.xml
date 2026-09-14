@@ -24,7 +24,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <!-- 标准 Android TV 入口标签 -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
-                <!-- 删除了 HOME 和 DEFAULT 标签，让它暂时回归普通 App 身份 -->
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
            </intent-filter>
         </activity>
 
