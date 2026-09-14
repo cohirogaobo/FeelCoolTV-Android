@@ -14,9 +14,11 @@ class ExoPlayerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 创建全屏的原生播放视图
         val playerView = PlayerView(this)
         playerView.setBackgroundColor(Color.BLACK)
+        // 🔥 修复：强制禁用所有的播放控件（暂停、快进、时间轴全部隐藏）
+        playerView.useController = false 
+        
         setContentView(playerView)
 
         val videoUrl = intent.getStringExtra("VIDEO_URL") ?: return
@@ -27,10 +29,9 @@ class ExoPlayerActivity : AppCompatActivity() {
         val mediaItem = MediaItem.fromUri(videoUrl)
         player?.setMediaItem(mediaItem)
         player?.prepare()
-        player?.play() // 自动播放
+        player?.play() 
     }
 
-    // 按遥控器返回键时，销毁播放器并返回 HTML 界面
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             finish()
