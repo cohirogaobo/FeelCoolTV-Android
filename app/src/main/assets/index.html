@@ -56,7 +56,6 @@
             display: flex; flex-direction: column; padding: 18px 12px; box-sizing: border-box;
             transition: width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), padding var(--animation-speed) ease;
             overflow: hidden; 
-            /* 🔥 终极圆角修复：恢复原生 WebKit 遮罩以裁切高斯模糊溢出的直角，但严格禁用 translateZ 防止背景卡死 */
             -webkit-mask-image: -webkit-radial-gradient(white, black);
             background-clip: padding-box;
         }
@@ -359,7 +358,6 @@
 
         function fetchTrendingShow() {
             var apiKey = globalConfig.api.tmdb_api_key || 'f7762624a95e4c3823500736d40162cd';
-            
             var tmdbApi = 'https://api.themoviedb.org/3/trending/tv/day?language=zh-CN&api_key=' + apiKey;
 
             fetch(tmdbApi)
@@ -368,10 +366,10 @@
                     if (data && data.results && data.results.length > 0) {
                         var randomIndex = Math.floor(Math.random() * Math.min(10, data.results.length));
                         var show = data.results[randomIndex];
+                        var posterPath = show.backdrop_path;
                         
-                        trendingData.bg = 'https://image.tmdb.org/t/p/original' + show.backdrop_path; 
+                        // 先立刻更新标题文字，保证用户体验不割裂
                         trendingData.title = show.name || show.original_name;
-                        
                         var rating = show.vote_average ? show.vote_average.toFixed(1) : '暂无';
                         trendingData.sub = 'TMDB 时下流行 · ' + rating + '分';
                         
@@ -379,6 +377,37 @@
                             var svgHTML = document.querySelector('.focusable[data-row="1"][data-col="0"] svg').outerHTML;
                             updateHeroUI(trendingData.bg, trendingData.title, trendingData.sub, '很酷 TV+', svgHTML);
                         }
+                        
+                        // 🔥 终极防屏蔽机制：准备多条公益镜像路线，JavaScript 会逐一尝试，哪条通就用哪条！
+                        var mirrors = [
+                            'https://wsrv.nl/?url=' + encodeURIComponent('image.tmdb.org/t/p/original' + posterPath),
+                            'https://image.tmdb.org/t/p/original' + posterPath, 
+                            'https://images.weserv.nl/?url=' + encodeURIComponent('image.tmdb.org/t/p/original' + posterPath),
+                            'https://tmdb-image-prod.b-cdn.net/t/p/original' + posterPath
+                        ];
+                        
+                        var attempt = 0;
+                        var testImg = new Image();
+                        
+                        // 只要有一条路线加载成功，立刻将背景替换
+                        testImg.onload = function() {
+                            trendingData.bg = mirrors[attempt];
+                            if (currentFocusEl && currentFocusEl.getAttribute('data-api-bind') === 'tmdb') {
+                                var svgHTML = document.querySelector('.focusable[data-row="1"][data-col="0"] svg').outerHTML;
+                                updateHeroUI(trendingData.bg, trendingData.title, trendingData.sub, '很酷 TV+', svgHTML);
+                            }
+                        };
+                        
+                        // 若被 ISP 阻断导致 onerror，无缝切换下一个节点测试
+                        testImg.onerror = function() {
+                            attempt++;
+                            if(attempt < mirrors.length) {
+                                testImg.src = mirrors[attempt];
+                            }
+                        };
+                        
+                        // 启动链路测速加载
+                        testImg.src = mirrors[attempt];
                     }
                 })
                 .catch(function(e) { console.error("TMDB Fetch Error", e); });
