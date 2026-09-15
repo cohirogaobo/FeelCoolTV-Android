@@ -20,6 +20,8 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.Toast
+import android.widget.TextView
+import android.graphics.drawable.GradientDrawable
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -43,9 +45,10 @@ class MainActivity : AppCompatActivity() {
     private var backPressCount = 0
     private var lastBackPressTime = 0L
 
-    // IPTV 专属全屏状态与防误触计数
     private var isFullScreenIptv = false
     private var iptvExitCount = 0
+    
+    private var customToast: Toast? = null
 
     private val antiSleepHandler = Handler(Looper.getMainLooper())
     private val antiSleepRunnable = object : Runnable {
@@ -75,8 +78,31 @@ class MainActivity : AppCompatActivity() {
             .build()
     }
 
+    // 【新增】绕过安卓魔改系统强制加 Icon 的纯净版底层 Toast
+    private fun showPureNativeToast(message: String) {
+        runOnUiThread {
+            customToast?.cancel()
+            val toast = Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT)
+            
+            // 构建一个极其纯粹的 TextView，拒绝系统强塞图标
+            val textView = TextView(this@MainActivity).apply {
+                text = message
+                setTextColor(Color.WHITE)
+                textSize = 15f
+                setPadding(45, 20, 45, 20)
+                background = GradientDrawable().apply {
+                    setColor(Color.parseColor("#B3000000")) // 半透明纯黑底色
+                    cornerRadius = 50f
+                }
+            }
+            @Suppress("DEPRECATION")
+            toast.view = textView // 将干净的 View 塞入原生 Toast
+            toast.show()
+            customToast = toast
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        // App 启动后，原生开屏图任务完成，将底层 Window 背景切回黑色以节省内存
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.BLACK))
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -84,7 +110,6 @@ class MainActivity : AppCompatActivity() {
         val layout = FrameLayout(this)
         layout.setBackgroundColor(Color.BLACK)
         
-        // 核心进化：使用原生 TextureView 直接渲染，不仅极简，还能随时提取视频画面生成海报
         textureView = TextureView(this)
         layout.addView(textureView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
 
@@ -164,17 +189,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
-        // IPTV 3次防误触退出逻辑
         if (isFullScreenIptv) {
             iptvExitCount++
             if (iptvExitCount >= 3) {
                 isFullScreenIptv = false
                 webView.visibility = View.VISIBLE
-                webView.requestFocus() // 将焦点抢回前端
-                player?.volume = 0f    // 声音归零，无缝切回背景预览状态
+                webView.requestFocus() 
+                player?.volume = 0f    
                 backPressCount = 0 
             } else {
-                Toast.makeText(this, "再按 ${3 - iptvExitCount} 次退出全屏播放", Toast.LENGTH_SHORT).show()
+                showPureNativeToast("再按 ${3 - iptvExitCount} 次退出全屏播放")
             }
             return
         }
@@ -187,13 +211,14 @@ class MainActivity : AppCompatActivity() {
                 if (currentTime - lastBackPressTime > 2000) {
                     backPressCount = 1
                     lastBackPressTime = currentTime
-                    webView.evaluateJavascript("javascript:showToast('再按两次返回键退出很酷TV')", null)
+                    // 使用干净原生 Toast
+                    showPureNativeToast("再按两次返回键退出很酷TV")
                 } else {
                     backPressCount++
                     if (backPressCount >= 3) {
                         super.onBackPressed()
                     } else {
-                        webView.evaluateJavascript("javascript:showToast('再按 ${3 - backPressCount} 次返回键退出')", null)
+                        showPureNativeToast("再按 ${3 - backPressCount} 次返回键退出")
                     }
                 }
             }
@@ -208,13 +233,11 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     isFullScreenIptv = true
                     iptvExitCount = 0
-                    webView.visibility = View.GONE // 直接隐藏网页层，露出底下的播放器
+                    webView.visibility = View.GONE 
                     
                     if (player?.currentMediaItem?.localConfiguration?.uri?.toString() == url && player?.isPlaying == true) {
-                        // 无缝衔接：直接开启声音即可！
                         player?.volume = 1f
                     } else {
-                        // 若未准备好，立即播放
                         if (player == null) setupPlayer()
                         player?.volume = 1f
                         player?.setMediaItem(MediaItem.fromUri(url))
@@ -246,10 +269,10 @@ class MainActivity : AppCompatActivity() {
                     try {
                         startActivity(launchIntent)
                     } catch (e: Exception) {
-                        runOnUiThread { webView.evaluateJavascript("javascript:showToast('应用组件被系统限制启动')", null) }
+                        showPureNativeToast("应用组件被系统限制启动")
                     }
                 } else {
-                    runOnUiThread { webView.evaluateJavascript("javascript:showToast('未找到应用，请确认是否安装')", null) }
+                    showPureNativeToast("未找到应用，请确认是否安装")
                 }
             }
         }
@@ -296,13 +319,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 神级功能：抓取当前直播流的一帧画面存为本地海报图
         @JavascriptInterface
         fun cacheCurrentFrame(streamUrl: String) {
             runOnUiThread {
                 try {
                     val bitmap = textureView.bitmap ?: return@runOnUiThread
-                    // 压缩到 640x360 节省内存与磁盘空间
                     val scaled = Bitmap.createScaledBitmap(bitmap, 640, 360, true)
                     val file = File(cacheDir, "frame_${streamUrl.hashCode()}.jpg")
                     val out = FileOutputStream(file)
