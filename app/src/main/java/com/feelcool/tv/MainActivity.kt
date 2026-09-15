@@ -12,6 +12,7 @@ import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
@@ -21,13 +22,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import okhttp3.Cache
 import okhttp3.Dns
-import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.ByteArrayInputStream
-import java.io.File
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
@@ -35,41 +33,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var splashView: ImageView
     private lateinit var webView: WebView
     
-    // 动态背景播放器
     private var player: ExoPlayer? = null
     private lateinit var playerView: PlayerView
     
     private var backPressCount = 0
     private var lastBackPressTime = 0L
 
-    // 防休眠心跳包
     private val antiSleepHandler = Handler(Looper.getMainLooper())
     private val antiSleepRunnable = object : Runnable {
         override fun run() {
-            // 发送无害空按键，欺骗小米系统的屏幕保护监控
             webView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_UNKNOWN))
             webView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_UNKNOWN))
-            antiSleepHandler.postDelayed(this, 120 * 1000) // 2分钟跳动一次
+            antiSleepHandler.postDelayed(this, 120 * 1000) 
         }
     }
 
-    // 🔥 全局物理级强缓存引擎 (100MB 磁盘缓存)
+    // 🔥 极简 OkHttp：仅用于绕过 TMDB API 的 DNS 污染，绝对不碰图片
     private val okHttpClient by lazy {
-        val cacheDir = File(applicationContext.cacheDir, "FeelCool_Image_Cache")
-        val cache = Cache(cacheDir, 100L * 1024L * 1024L) // 100MB 极限缓存空间
-        
-        // 强制改写服务端响应头，让所有图片必须在本地乖乖缓存 10 天
-        val forceCacheInterceptor = Interceptor { chain ->
-            val response = chain.proceed(chain.request())
-            response.newBuilder()
-                .header("Cache-Control", "public, max-age=864000") // 10 days
-                .removeHeader("Pragma")
-                .build()
-        }
-
         OkHttpClient.Builder()
-            .cache(cache)
-            .addNetworkInterceptor(forceCacheInterceptor)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .dns(object : Dns {
@@ -90,22 +71,18 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 保持屏幕常亮
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
         val layout = FrameLayout(this)
         layout.setBackgroundColor(Color.BLACK)
         
-        // 1. 最底层：ExoPlayer 视图（用于直播动态背景预览）
         playerView = PlayerView(this).apply {
             useController = false
             setBackgroundColor(Color.BLACK)
         }
         layout.addView(playerView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
 
-        // 2. 中间层：WebView 容器
         webView = WebView(this)
-        // 彻底透明化，让底层的播放器能透视出来
         webView.setBackgroundColor(Color.TRANSPARENT)
         webView.settings.apply {
             javaScriptEnabled = true
@@ -116,6 +93,9 @@ class MainActivity : AppCompatActivity() {
             textZoom = 100 
             allowFileAccessFromFileURLs = true
             allowUniversalAccessFromFileURLs = true
+            
+            // 🔥 启用 WebView 强大的原生磁盘缓存机制
+            cacheMode = WebSettings.LOAD_DEFAULT
         }
         webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
         webView.isFocusable = true
@@ -125,14 +105,9 @@ class MainActivity : AppCompatActivity() {
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url.toString()
                 
-                // 智能拦截：只接管图片、配置文件和 API，直接略过音视频流，避免影响播放性能
-                val ext = url.substringAfterLast(".").lowercase()
-                val isImage = ext in listOf("jpg", "jpeg", "png", "webp", "gif") || 
-                              url.contains("/t/p/") || url.contains("unsplash.com") || 
-                              url.contains("weserv.nl") || url.contains("bdstatic.com") || url.contains("hdslb.com")
-                val isApi = url.contains("api.themoviedb.org") || url.contains("config.json")
-                
-                if (isImage || isApi) {
+                // 🔥 性能释放核心：仅拦截纯文本 API。图片请求直接放行，让底层 C++ 飞速解码和缓存！
+                if (url.contains("api.themoviedb.org")) {
+                    
                     if (request?.method.equals("OPTIONS", ignoreCase = true)) {
                         val corsHeaders = mutableMapOf(
                             "Access-Control-Allow-Origin" to "*",
@@ -150,21 +125,19 @@ class MainActivity : AppCompatActivity() {
                                 reqBuilder.addHeader(key, value)
                             }
                         }
-                        reqBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0")
+                        reqBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0")
                         
                         val response = okHttpClient.newCall(reqBuilder.build()).execute()
                         val inputStream = response.body?.byteStream()
 
-                        var mimeType = "application/json"
-                        if (isImage) mimeType = "image/jpeg"
-                        if (url.endsWith(".png")) mimeType = "image/png"
-
                         val headers = mutableMapOf<String, String>()
-                        response.headers.forEach { (key, value) -> headers[key] = value }
+                        response.headers.forEach { (key, value) -> 
+                            headers[key] = value 
+                        }
                         headers["Access-Control-Allow-Origin"] = "*"
 
                         return WebResourceResponse(
-                            mimeType,
+                            "application/json",
                             "UTF-8",
                             response.code,
                             if (response.message.isEmpty()) "OK" else response.message,
@@ -182,7 +155,6 @@ class MainActivity : AppCompatActivity() {
         webView.addJavascriptInterface(JSBridge(), "FeelCoolTV")
         layout.addView(webView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         
-        // 3. 最顶层：原生开屏启动图
         splashView = ImageView(this)
         splashView.setBackgroundColor(Color.BLACK)
         val splashResId = resources.getIdentifier("splash", "drawable", packageName)
@@ -195,7 +167,6 @@ class MainActivity : AppCompatActivity() {
         setContentView(layout)
         webView.loadUrl("file:///android_asset/index.html")
 
-        // 启动防休眠心跳包
         antiSleepHandler.postDelayed(antiSleepRunnable, 60 * 1000)
     }
 
@@ -273,23 +244,21 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun hideSplash() {
             runOnUiThread {
-                splashView.animate().alpha(0f).setDuration(600).withEndAction {
+                splashView.animate().alpha(0f).setDuration(400).withEndAction {
                     splashView.visibility = View.GONE
                 }
             }
         }
 
-        // 🔥 动态预览黑科技 API
         @JavascriptInterface
         fun playBackgroundVideo(url: String) {
             runOnUiThread {
                 if (player == null) {
                     player = ExoPlayer.Builder(this@MainActivity).build().apply {
                         playerView.player = this
-                        volume = 0f // 预览静音
+                        volume = 0f 
                         addListener(object : Player.Listener {
                             override fun onRenderedFirstFrame() {
-                                // 当视频第一帧渲染出来时，通知前端隐藏静态海报，完美衔接！
                                 webView.evaluateJavascript("javascript:if(window.onBackgroundVideoStarted) window.onBackgroundVideoStarted();", null)
                             }
                         })
