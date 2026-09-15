@@ -10,10 +10,10 @@
         android:label="很酷TV" 
         android:icon="@drawable/icon"
         android:logo="@drawable/icon"
-        android:theme="@style/Theme.AppCompat.NoActionBar" 
+        android:theme="@style/Theme.FeelCoolTV" 
         android:usesCleartextTraffic="true"
         android:hardwareAccelerated="true"
-        android:largeHeap="true"> <!-- 为低配电视开启大堆内存，防止频繁 GC 卡死 -->
+        android:largeHeap="true">
 
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter android:priority="999">
@@ -21,7 +21,6 @@
             </intent-filter>
         </receiver>
         
-        <!-- 添加 configChanges，避免电视外设插拔或屏幕状态变化导致 Activity 重新创建 -->
         <activity 
             android:name=".MainActivity" 
             android:launchMode="singleTask" 
@@ -41,7 +40,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
            </intent-filter>
         </activity>
-
-        <activity android:name=".ExoPlayerActivity" android:exported="false" android:screenOrientation="landscape"/>
+        
+        <!-- 注意：ExoPlayerActivity 已经被彻底淘汰删除，以实现无缝转场 -->
     </application>
 </manifest>
