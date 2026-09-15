@@ -1,12 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
-    
-    <!-- 声明电视特性，不要触摸屏也能用 -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
-
-    <!-- 新增这一行：允许你的桌面应用唤起电视里的任何第三方 APP -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     
@@ -15,27 +11,37 @@
         android:icon="@drawable/icon"
         android:logo="@drawable/icon"
         android:theme="@style/Theme.AppCompat.NoActionBar" 
-        android:usesCleartextTraffic="true"> <!-- 允许加载 http 的内网 IP -->
+        android:usesCleartextTraffic="true"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true"> <!-- 为低配电视开启大堆内存，防止频繁 GC 卡死 -->
+
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter android:priority="999">
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
         
-        <!-- 主界面：WebView 容器 -->
-        <activity android:name=".MainActivity" android:launchMode="singleTask" android:clearTaskOnLaunch="true" android:stateNotNeeded="true" android:excludeFromRecents="true" android:icon="@drawable/icon" android:logo="@drawable/icon" android:exported="true" android:screenOrientation="landscape">
+        <!-- 添加 configChanges，避免电视外设插拔或屏幕状态变化导致 Activity 重新创建 -->
+        <activity 
+            android:name=".MainActivity" 
+            android:launchMode="singleTask" 
+            android:clearTaskOnLaunch="true" 
+            android:stateNotNeeded="true" 
+            android:excludeFromRecents="true" 
+            android:icon="@drawable/icon" 
+            android:logo="@drawable/icon" 
+            android:exported="true" 
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden|navigation">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <!-- 关键修复：加入标准手机版 Launcher 标签，专治国内魔改系统不显示图标的问题 -->
                 <category android:name="android.intent.category.LAUNCHER" />
-                <!-- 标准 Android TV 入口标签 -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
            </intent-filter>
         </activity>
 
-        <!-- 播放器界面 -->
         <activity android:name=".ExoPlayerActivity" android:exported="false" android:screenOrientation="landscape"/>
     </application>
 </manifest>
