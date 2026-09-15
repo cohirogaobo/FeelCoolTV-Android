@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.FeelCoolTV" parent="Theme.AppCompat.NoActionBar">
+        <!-- 启动瞬间由底层系统直接渲染这张图，完美消灭黑屏 -->
+        <item name="android:windowBackground">@drawable/splash</item>
+    </style>
+</resources>
