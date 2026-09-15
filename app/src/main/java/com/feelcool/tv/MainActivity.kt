@@ -20,8 +20,6 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.Toast
-import android.widget.TextView
-import android.graphics.drawable.GradientDrawable
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -47,8 +45,6 @@ class MainActivity : AppCompatActivity() {
 
     private var isFullScreenIptv = false
     private var iptvExitCount = 0
-    
-    private var customToast: Toast? = null
 
     private val antiSleepHandler = Handler(Looper.getMainLooper())
     private val antiSleepRunnable = object : Runnable {
@@ -76,30 +72,6 @@ class MainActivity : AppCompatActivity() {
                 }
             })
             .build()
-    }
-
-    // 【新增】绕过安卓魔改系统强制加 Icon 的纯净版底层 Toast
-    private fun showPureNativeToast(message: String) {
-        runOnUiThread {
-            customToast?.cancel()
-            val toast = Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT)
-            
-            // 构建一个极其纯粹的 TextView，拒绝系统强塞图标
-            val textView = TextView(this@MainActivity).apply {
-                text = message
-                setTextColor(Color.WHITE)
-                textSize = 15f
-                setPadding(45, 20, 45, 20)
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#B3000000")) // 半透明纯黑底色
-                    cornerRadius = 50f
-                }
-            }
-            @Suppress("DEPRECATION")
-            toast.view = textView // 将干净的 View 塞入原生 Toast
-            toast.show()
-            customToast = toast
-        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -198,7 +170,7 @@ class MainActivity : AppCompatActivity() {
                 player?.volume = 0f    
                 backPressCount = 0 
             } else {
-                showPureNativeToast("再按 ${3 - iptvExitCount} 次退出全屏播放")
+                Toast.makeText(this, "再按 ${3 - iptvExitCount} 次退出全屏", Toast.LENGTH_SHORT).show()
             }
             return
         }
@@ -211,14 +183,13 @@ class MainActivity : AppCompatActivity() {
                 if (currentTime - lastBackPressTime > 2000) {
                     backPressCount = 1
                     lastBackPressTime = currentTime
-                    // 使用干净原生 Toast
-                    showPureNativeToast("再按两次返回键退出很酷TV")
+                    Toast.makeText(this, "再按两次返回键退出", Toast.LENGTH_SHORT).show()
                 } else {
                     backPressCount++
                     if (backPressCount >= 3) {
                         super.onBackPressed()
                     } else {
-                        showPureNativeToast("再按 ${3 - backPressCount} 次返回键退出")
+                        Toast.makeText(this, "再按 ${3 - backPressCount} 次返回键退出", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -269,10 +240,10 @@ class MainActivity : AppCompatActivity() {
                     try {
                         startActivity(launchIntent)
                     } catch (e: Exception) {
-                        showPureNativeToast("应用组件被系统限制启动")
+                        Toast.makeText(this@MainActivity, "应用被系统限制启动", Toast.LENGTH_SHORT).show()
                     }
                 } else {
-                    showPureNativeToast("未找到应用，请确认是否安装")
+                    Toast.makeText(this@MainActivity, "未找到应用，请确认是否安装", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -280,7 +251,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun hideSplash() {
             runOnUiThread {
-                splashView.animate().alpha(0f).setDuration(400).withEndAction {
+                splashView.animate().alpha(0f).setDuration(300).withEndAction {
                     splashView.visibility = View.GONE
                     splashView.setImageDrawable(null)
                 }
