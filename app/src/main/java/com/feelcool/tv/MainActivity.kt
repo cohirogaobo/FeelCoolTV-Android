@@ -81,13 +81,20 @@ class MainActivity : AppCompatActivity() {
         layout.addView(playerView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
 
         webView = WebView(this)
-        // 性能关键：默认设置为不透明黑色，消除双层 Alpha 混合！仅播放背景视频时才透明
         webView.setBackgroundColor(Color.BLACK)
+
+        // 【100%封杀滚动条】：从 Android 原生底层彻底剥夺 WebView 绘制滚动条和边缘阴影的权利
+        webView.isVerticalScrollBarEnabled = false
+        webView.isHorizontalScrollBarEnabled = false
+        webView.overScrollMode = View.OVER_SCROLL_NEVER
+        webView.scrollBarStyle = View.SCROLLBARS_OUTSIDE_OVERLAY
+        webView.isVerticalFadingEdgeEnabled = false
+        webView.isHorizontalFadingEdgeEnabled = false
         
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            databaseEnabled = true // 启用本地存储提升索引速度
+            databaseEnabled = true 
             mediaPlaybackRequiresUserGesture = false
             useWideViewPort = true
             loadWithOverviewMode = true
@@ -95,13 +102,9 @@ class MainActivity : AppCompatActivity() {
             allowFileAccessFromFileURLs = true
             allowUniversalAccessFromFileURLs = true
             cacheMode = WebSettings.LOAD_DEFAULT
-            
-            // 禁用无用的手势与缩放系统，减轻事件监听链负担
             setSupportZoom(false)
             builtInZoomControls = false
             displayZoomControls = false
-            
-            // 提高渲染管线调度优先级
             @Suppress("DEPRECATION")
             setRenderPriority(WebSettings.RenderPriority.HIGH)
         }
@@ -206,7 +209,7 @@ class MainActivity : AppCompatActivity() {
     inner class JSBridge {
         @JavascriptInterface
         fun executeAction(action: String, title: String) {
-            // 👇 核心修复：无论是打开 IPTV 还是第三方应用，跳转前必须先释放背景播放器，交出硬件解码器！
+            // 核心修复：跳转前必须先释放背景播放器，交出硬件解码器
             stopBackgroundVideo()
 
             if (action.startsWith("iptv:")) {
@@ -254,7 +257,6 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 splashView.animate().alpha(0f).setDuration(300).withEndAction {
                     splashView.visibility = View.GONE
-                    // 彻底释放开屏图 Bitmap 显存
                     splashView.setImageDrawable(null)
                 }
             }
@@ -269,7 +271,6 @@ class MainActivity : AppCompatActivity() {
                         volume = 0f 
                         addListener(object : Player.Listener {
                             override fun onRenderedFirstFrame() {
-                                // 视频出首帧时，将 WebView 背景透明以便透出底层视频
                                 webView.setBackgroundColor(Color.TRANSPARENT)
                                 webView.evaluateJavascript("javascript:if(window.onBackgroundVideoStarted) window.onBackgroundVideoStarted();", null)
                             }
@@ -285,7 +286,6 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun stopBackgroundVideo() {
             runOnUiThread {
-                // 停止视频时立即恢复黑色背景，关闭透明图层混合，释放解码器
                 webView.setBackgroundColor(Color.BLACK)
                 player?.stop()
                 player?.clearMediaItems()
