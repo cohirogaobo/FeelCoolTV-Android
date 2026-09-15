@@ -27,15 +27,15 @@ class MainActivity : AppCompatActivity() {
     private var backPressCount = 0
     private var lastBackPressTime = 0L
 
-    // 🔥 黑科技：创建一个内置 TMDB 官方 Cloudflare 节点的自定义客户端
+    // 🔥 黑科技：仅针对 API 域名进行精准 DNS 绕过，防止污染图片 CDN 的 SSL 证书
     private val okHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .dns(object : Dns {
                 override fun lookup(hostname: String): List<InetAddress> {
-                    if (hostname.contains("themoviedb.org") || hostname.contains("tmdb.org")) {
-                        // 强制解析到 TMDB 在 Cloudflare 的高可用直连节点
+                    // 仅对 api 域名指定干净的 Cloudflare IP
+                    if (hostname == "api.themoviedb.org") {
                         return listOf(
                             InetAddress.getByName("104.16.61.155"),
                             InetAddress.getByName("104.16.62.155"),
@@ -69,14 +69,14 @@ class MainActivity : AppCompatActivity() {
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
         
-        // 🔥 核心拦截逻辑：处理跨域并接管 TMDB 请求
+        // 🔥 核心拦截逻辑：接管 TMDB 流量，完美解决跨域与图片阻断
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url.toString()
                 
                 if (url.contains("themoviedb.org") || url.contains("tmdb.org")) {
                     
-                    // 1. 拦截并放行 OPTIONS 预检请求（这是解决 WebView 中 Fetch CORS 报错的绝对关键！）
+                    // 1. 拦截并放行 OPTIONS 预检请求（解决 Fetch 跨域报错）
                     if (request?.method.equals("OPTIONS", ignoreCase = true)) {
                         val corsHeaders = mutableMapOf(
                             "Access-Control-Allow-Origin" to "*",
@@ -89,8 +89,15 @@ class MainActivity : AppCompatActivity() {
 
                     // 2. 发起真实的底层 OkHttp 请求
                     try {
-                        val reqBuilder = Request.Builder().url(url)
-                        // 透传原请求头（去除 Host 避免冲突）
+                        var targetUrl = url
+                        
+                        // 🔥 针对图片请求：在底层静默替换为高速镜像节点，完美避开 SNI 阻断，前端完全无感
+                        if (targetUrl.contains("image.tmdb.org")) {
+                            targetUrl = targetUrl.replace("image.tmdb.org", "tmdb.yuuko.cn")
+                        }
+
+                        val reqBuilder = Request.Builder().url(targetUrl)
+                        // 透传原请求头（务必去除 Host，让底层的代理节点自行处理真实 Host）
                         request?.requestHeaders?.forEach { (key, value) ->
                             if (!key.equals("Host", ignoreCase = true)) {
                                 reqBuilder.addHeader(key, value)
@@ -101,15 +108,16 @@ class MainActivity : AppCompatActivity() {
                         val response = okHttpClient.newCall(reqBuilder.build()).execute()
                         val inputStream = response.body?.byteStream()
                         
+                        // 动态推断 MIME 类型，确保图片能在 WebView 中正常渲染
                         var mimeType = "application/json"
-                        if (url.endsWith(".jpg") || url.endsWith(".jpeg") || url.contains("/t/p/")) mimeType = "image/jpeg"
-                        if (url.endsWith(".png")) mimeType = "image/png"
+                        if (targetUrl.endsWith(".jpg") || targetUrl.endsWith(".jpeg") || targetUrl.contains("/t/p/")) mimeType = "image/jpeg"
+                        if (targetUrl.endsWith(".png")) mimeType = "image/png"
 
                         val headers = mutableMapOf<String, String>()
                         response.headers.forEach { (key, value) -> 
                             headers[key] = value 
                         }
-                        // 强制追加跨域允许头
+                        // 强制给回传的数据打上跨域通行证
                         headers["Access-Control-Allow-Origin"] = "*"
 
                         return WebResourceResponse(
