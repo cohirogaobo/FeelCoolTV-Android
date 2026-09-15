@@ -48,7 +48,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 🔥 极简 OkHttp：仅用于绕过 TMDB API 的 DNS 污染，绝对不碰图片
     private val okHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -70,7 +69,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
         val layout = FrameLayout(this)
@@ -83,31 +81,38 @@ class MainActivity : AppCompatActivity() {
         layout.addView(playerView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
 
         webView = WebView(this)
-        webView.setBackgroundColor(Color.TRANSPARENT)
+        // 性能关键：默认设置为不透明黑色，消除双层 Alpha 混合！仅播放背景视频时才透明
+        webView.setBackgroundColor(Color.BLACK)
+        
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
+            databaseEnabled = true // 启用本地存储提升索引速度
             mediaPlaybackRequiresUserGesture = false
             useWideViewPort = true
             loadWithOverviewMode = true
             textZoom = 100 
             allowFileAccessFromFileURLs = true
             allowUniversalAccessFromFileURLs = true
-            
-            // 🔥 启用 WebView 强大的原生磁盘缓存机制
             cacheMode = WebSettings.LOAD_DEFAULT
+            
+            // 禁用无用的手势与缩放系统，减轻事件监听链负担
+            setSupportZoom(false)
+            builtInZoomControls = false
+            displayZoomControls = false
+            
+            // 提高渲染管线调度优先级
+            @Suppress("DEPRECATION")
+            setRenderPriority(WebSettings.RenderPriority.HIGH)
         }
-        webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
         
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url.toString()
-                
-                // 🔥 性能释放核心：仅拦截纯文本 API。图片请求直接放行，让底层 C++ 飞速解码和缓存！
                 if (url.contains("api.themoviedb.org")) {
-                    
                     if (request?.method.equals("OPTIONS", ignoreCase = true)) {
                         val corsHeaders = mutableMapOf(
                             "Access-Control-Allow-Origin" to "*",
@@ -244,8 +249,10 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun hideSplash() {
             runOnUiThread {
-                splashView.animate().alpha(0f).setDuration(400).withEndAction {
+                splashView.animate().alpha(0f).setDuration(300).withEndAction {
                     splashView.visibility = View.GONE
+                    // 彻底释放开屏图 Bitmap 显存
+                    splashView.setImageDrawable(null)
                 }
             }
         }
@@ -259,6 +266,8 @@ class MainActivity : AppCompatActivity() {
                         volume = 0f 
                         addListener(object : Player.Listener {
                             override fun onRenderedFirstFrame() {
+                                // 视频出首帧时，将 WebView 背景透明以便透出底层视频
+                                webView.setBackgroundColor(Color.TRANSPARENT)
                                 webView.evaluateJavascript("javascript:if(window.onBackgroundVideoStarted) window.onBackgroundVideoStarted();", null)
                             }
                         })
@@ -273,6 +282,8 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun stopBackgroundVideo() {
             runOnUiThread {
+                // 停止视频时立即恢复黑色背景，关闭透明图层混合
+                webView.setBackgroundColor(Color.BLACK)
                 player?.stop()
                 player?.clearMediaItems()
             }
