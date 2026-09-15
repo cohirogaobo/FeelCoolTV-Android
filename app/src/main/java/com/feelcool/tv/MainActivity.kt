@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -19,6 +20,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
@@ -45,6 +47,11 @@ class MainActivity : AppCompatActivity() {
 
     private var isFullScreenIptv = false
     private var iptvExitCount = 0
+    
+    private var customToast: Toast? = null
+    
+    // 开屏图销毁状态锁，防止前端和原生层重复执行
+    private var isSplashHidden = false
 
     private val antiSleepHandler = Handler(Looper.getMainLooper())
     private val antiSleepRunnable = object : Runnable {
@@ -72,6 +79,39 @@ class MainActivity : AppCompatActivity() {
                 }
             })
             .build()
+    }
+
+    private fun showPureNativeToast(message: String) {
+        runOnUiThread {
+            customToast?.cancel()
+            val toast = Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT)
+            val textView = TextView(this@MainActivity).apply {
+                text = message
+                setTextColor(Color.WHITE)
+                textSize = 15f
+                setPadding(45, 20, 45, 20)
+                background = GradientDrawable().apply {
+                    setColor(Color.parseColor("#B3000000")) 
+                    cornerRadius = 50f
+                }
+            }
+            @Suppress("DEPRECATION")
+            toast.view = textView
+            toast.show()
+            customToast = toast
+        }
+    }
+
+    // 核心保护机制：强制销毁开屏图，释放内存
+    private fun executeHideSplash() {
+        if (isSplashHidden) return
+        isSplashHidden = true
+        runOnUiThread {
+            splashView.animate().alpha(0f).setDuration(300).withEndAction {
+                splashView.visibility = View.GONE
+                splashView.setImageDrawable(null)
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -114,6 +154,14 @@ class MainActivity : AppCompatActivity() {
         webView.isFocusableInTouchMode = true
         
         webView.webViewClient = object : WebViewClient() {
+            // 终极安全网：网页加载完成后，原生层强制延迟销毁开屏图，无视前端JS死锁
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    executeHideSplash()
+                }, 800)
+            }
+
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url.toString()
                 if (url.contains("api.themoviedb.org")) {
@@ -170,7 +218,7 @@ class MainActivity : AppCompatActivity() {
                 player?.volume = 0f    
                 backPressCount = 0 
             } else {
-                Toast.makeText(this, "再按 ${3 - iptvExitCount} 次退出全屏", Toast.LENGTH_SHORT).show()
+                showPureNativeToast("再按 ${3 - iptvExitCount} 次退出全屏播放")
             }
             return
         }
@@ -183,13 +231,13 @@ class MainActivity : AppCompatActivity() {
                 if (currentTime - lastBackPressTime > 2000) {
                     backPressCount = 1
                     lastBackPressTime = currentTime
-                    Toast.makeText(this, "再按两次返回键退出", Toast.LENGTH_SHORT).show()
+                    showPureNativeToast("再按两次返回键退出很酷TV")
                 } else {
                     backPressCount++
                     if (backPressCount >= 3) {
                         super.onBackPressed()
                     } else {
-                        Toast.makeText(this, "再按 ${3 - backPressCount} 次返回键退出", Toast.LENGTH_SHORT).show()
+                        showPureNativeToast("再按 ${3 - backPressCount} 次返回键退出")
                     }
                 }
             }
@@ -240,22 +288,17 @@ class MainActivity : AppCompatActivity() {
                     try {
                         startActivity(launchIntent)
                     } catch (e: Exception) {
-                        Toast.makeText(this@MainActivity, "应用被系统限制启动", Toast.LENGTH_SHORT).show()
+                        showPureNativeToast("应用被系统限制启动")
                     }
                 } else {
-                    Toast.makeText(this@MainActivity, "未找到应用，请确认是否安装", Toast.LENGTH_SHORT).show()
+                    showPureNativeToast("未找到应用，请确认是否安装")
                 }
             }
         }
 
         @JavascriptInterface
         fun hideSplash() {
-            runOnUiThread {
-                splashView.animate().alpha(0f).setDuration(300).withEndAction {
-                    splashView.visibility = View.GONE
-                    splashView.setImageDrawable(null)
-                }
-            }
+            executeHideSplash()
         }
 
         private fun setupPlayer() {
