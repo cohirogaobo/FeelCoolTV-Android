@@ -20,7 +20,6 @@
             animation: none !important;
         }
 
-        /* 彻底透明化，给底层 ExoPlayer 留出视野 */
         html, body {
             margin: 0; padding: 0; width: 100%; height: 100%;
             background-color: transparent !important; color: #fff;
@@ -33,7 +32,6 @@
 
         * { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
         
-        /* 独立纯黑背景底板，当视频播放时使其淡出 */
         .base-layer { 
             position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
             background-color: #050505; z-index: -3; 
@@ -48,7 +46,6 @@
             background-image: url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564');
         }
 
-        /* 保留阴影遮罩让字体看得清，即使视频在播放时也不隐藏 */
         .hero-overlay {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0;
             background: linear-gradient(to right, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 60%, transparent 100%),
@@ -137,11 +134,10 @@
         .sidebar.collapsed .nav-divider { margin: 12px 10px; }
         .nav-section-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 0 10px 8px 10px; flex-shrink: 0; }
 
-        /* 🔥 GPU加速优化：改用 transform: translateX 代替 left 动画，帧数在低端小米电视上直接拉满！ */
         .main-content { 
             position: absolute; top: 0; bottom: 0; z-index: 2; left: 88px; width: calc(100% - 88px); 
             display: flex; flex-direction: column; justify-content: flex-end; padding: 40px 45px; box-sizing: border-box; 
-            transform: translateX(137px); /* 225 - 88 = 137 */
+            transform: translateX(137px);
             transition: transform var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1);
             will-change: transform;
         }
@@ -302,7 +298,6 @@
             }, 100); 
         }
 
-        // 供底层视频播放器回调：当第一帧画面渲染出来时，透明化顶层黑幕
         window.onBackgroundVideoStarted = function() {
             document.getElementById('heroBg').style.opacity = '0';
             document.getElementById('baseLayer').style.opacity = '0';
@@ -342,10 +337,9 @@
         }
 
         function initApp() {
-            // 🔥 强行保证开屏画面驻留 2.8 秒，等待所有缓存加载完成，彻底告别开机残影
-            setTimeout(removeNativeSplash, 2800);
+            // 🔥 秒进逻辑：恢复瞬间移除开屏图，绝不等待
+            removeNativeSplash();
             
-            // 全局 Config.json 配置也加入了 localStorage 缓存对比
             var localConfigStr = localStorage.getItem('feelcool_config');
             if (localConfigStr) {
                 try {
@@ -402,14 +396,12 @@
                 updateHeroUI(null, trendingData.title, trendingData.sub, '很酷 TV+', svgHTML);
             }
             
-            // TMDB 图像容灾矩阵：在多个公益 CDN 中自动测速寻找可用节点
-            var rawUrl = show.bg.replace('https://image.tmdb.org/t/p/original', '');
+            var rawUrl = show.bg; 
             var mirrors = [
                 'https://wsrv.nl/?url=' + encodeURIComponent('image.tmdb.org/t/p/original' + rawUrl),
-                show.bg, 
+                'https://tmdb.yuuko.cn/t/p/original' + rawUrl,
                 'https://images.weserv.nl/?url=' + encodeURIComponent('image.tmdb.org/t/p/original' + rawUrl),
-                'https://tmdb-image-prod.b-cdn.net/t/p/original' + rawUrl,
-                'https://tmdb.yuuko.cn/t/p/original' + rawUrl
+                'https://tmdb-image-prod.b-cdn.net/t/p/original' + rawUrl
             ];
             
             var attempt = 0;
@@ -431,7 +423,6 @@
         function fetchTrendingShow() {
             var apiKey = globalConfig.api.tmdb_api_key || 'f7762624a95e4c3823500736d40162cd';
             
-            // 🔥 TMDB 缓存黑科技：本地预留 3 个数据，开机瞬间展示，丝滑极致
             var cachedTMDB = [];
             try {
                 cachedTMDB = JSON.parse(localStorage.getItem('tmdb_cache') || '[]');
@@ -439,12 +430,11 @@
             
             if (cachedTMDB.length > 0) {
                 var randomIndex = Math.floor(Math.random() * cachedTMDB.length);
-                var show = cachedTMDB.splice(randomIndex, 1)[0]; // 抽走一个用掉
+                var show = cachedTMDB.splice(randomIndex, 1)[0]; 
                 applyTMDBHero(show);
-                localStorage.setItem('tmdb_cache', JSON.stringify(cachedTMDB)); // 存回剩下未使用的
+                localStorage.setItem('tmdb_cache', JSON.stringify(cachedTMDB)); 
             }
 
-            // 静默在后台重新去 TMDB 进货，塞满缓存池
             var tmdbApi = 'https://api.themoviedb.org/3/trending/tv/day?language=zh-CN&api_key=' + apiKey;
             fetch(tmdbApi)
                 .then(function(res) { return res.json(); })
@@ -453,18 +443,17 @@
                         var freshList = data.results.slice(0, 5).map(function(item) {
                             var rating = item.vote_average ? item.vote_average.toFixed(1) : '暂无';
                             return {
-                                bg: 'https://image.tmdb.org/t/p/original' + item.backdrop_path,
+                                bg: item.backdrop_path, // 仅存储路径，节省本地空间
                                 title: item.name || item.original_name,
                                 sub: 'TMDB 时下流行 · ' + rating + '分'
                             };
                         });
                         
-                        // 如果刚才开机时本地没有缓存(首次运行)，立刻补发一次渲染
                         if (cachedTMDB.length === 0) {
                             applyTMDBHero(freshList[0]);
                         }
                         
-                        localStorage.setItem('tmdb_cache', JSON.stringify(freshList.slice(1, 4))); // 偷偷屯 3 个备用
+                        localStorage.setItem('tmdb_cache', JSON.stringify(freshList.slice(1, 4))); 
                     }
                 })
                 .catch(function(e) { console.error("TMDB Fetch Error", e); });
@@ -506,7 +495,6 @@
             var row = parseInt(targetEl.getAttribute('data-row'));
             var col = parseInt(targetEl.getAttribute('data-col'));
 
-            // 处理左右联动
             if (col === 0 && row >= 1 && row <= 3) {
                 renderTrack(row);
             } else if (col === 0 && (row === 0 || row >= 4 || row === -1)) {
@@ -530,7 +518,6 @@
                 if (sidebarItem) sidebarItem.classList.add('active-row');
             }
 
-            // 🔥 停止底层的视频预览，并恢复黑板和海报
             clearTimeout(bgPreviewTimeout);
             if (window.FeelCoolTV && window.FeelCoolTV.stopBackgroundVideo) {
                 window.FeelCoolTV.stopBackgroundVideo();
@@ -566,7 +553,6 @@
                 }
             }
 
-            // 🔥 触发 IPTV 沉浸式动态背景预览倒计时 (1秒)
             if (actionStr && actionStr.startsWith('iptv:')) {
                 var streamUrl = actionStr.substring(5);
                 bgPreviewTimeout = setTimeout(function() {
