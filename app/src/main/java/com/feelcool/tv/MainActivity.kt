@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatActivity
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.ByteArrayInputStream
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
@@ -26,18 +27,19 @@ class MainActivity : AppCompatActivity() {
     private var backPressCount = 0
     private var lastBackPressTime = 0L
 
-    // 🔥 黑科技：创建一个内置 TMDB 真实无污染 IP 的自定义 DNS 客户端
+    // 🔥 黑科技：创建一个内置 TMDB 官方 Cloudflare 节点的自定义客户端
     private val okHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .dns(object : Dns {
                 override fun lookup(hostname: String): List<InetAddress> {
-                    // 强行将 TMDB 域名指向其官方海外未被污染的 ASN IP 节点
-                    if (hostname == "api.themoviedb.org" || hostname == "image.tmdb.org") {
+                    if (hostname.contains("themoviedb.org") || hostname.contains("tmdb.org")) {
+                        // 强制解析到 TMDB 在 Cloudflare 的高可用直连节点
                         return listOf(
-                            InetAddress.getByName("143.244.50.212"),
-                            InetAddress.getByName("169.150.247.38")
+                            InetAddress.getByName("104.16.61.155"),
+                            InetAddress.getByName("104.16.62.155"),
+                            InetAddress.getByName("13.224.157.34")
                         )
                     }
                     return Dns.SYSTEM.lookup(hostname)
@@ -67,40 +69,54 @@ class MainActivity : AppCompatActivity() {
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
         
-        // 🔥 核心拦截逻辑
+        // 🔥 核心拦截逻辑：处理跨域并接管 TMDB 请求
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url.toString()
                 
-                // 只要是 TMDB 的请求，全部劫持交给 OkHttp 处理
                 if (url.contains("themoviedb.org") || url.contains("tmdb.org")) {
+                    
+                    // 1. 拦截并放行 OPTIONS 预检请求（这是解决 WebView 中 Fetch CORS 报错的绝对关键！）
+                    if (request?.method.equals("OPTIONS", ignoreCase = true)) {
+                        val corsHeaders = mutableMapOf(
+                            "Access-Control-Allow-Origin" to "*",
+                            "Access-Control-Allow-Methods" to "GET, POST, OPTIONS",
+                            "Access-Control-Allow-Headers" to "*",
+                            "Access-Control-Max-Age" to "86400"
+                        )
+                        return WebResourceResponse("text/plain", "UTF-8", 200, "OK", corsHeaders, ByteArrayInputStream(ByteArray(0)))
+                    }
+
+                    // 2. 发起真实的底层 OkHttp 请求
                     try {
                         val reqBuilder = Request.Builder().url(url)
-                        // 伪装浏览器请求头
+                        // 透传原请求头（去除 Host 避免冲突）
                         request?.requestHeaders?.forEach { (key, value) ->
-                            reqBuilder.addHeader(key, value)
+                            if (!key.equals("Host", ignoreCase = true)) {
+                                reqBuilder.addHeader(key, value)
+                            }
                         }
-                        reqBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                        reqBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0")
                         
                         val response = okHttpClient.newCall(reqBuilder.build()).execute()
                         val inputStream = response.body?.byteStream()
                         
-                        // 推断文件类型
                         var mimeType = "application/json"
                         if (url.endsWith(".jpg") || url.endsWith(".jpeg") || url.contains("/t/p/")) mimeType = "image/jpeg"
                         if (url.endsWith(".png")) mimeType = "image/png"
 
-                        // 注入跨域允许头，防止 WebView 的 Fetch API 报 CORS 错误
                         val headers = mutableMapOf<String, String>()
-                        response.headers.forEach { headers[it.first] = it.second }
+                        response.headers.forEach { (key, value) -> 
+                            headers[key] = value 
+                        }
+                        // 强制追加跨域允许头
                         headers["Access-Control-Allow-Origin"] = "*"
-                        headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
 
                         return WebResourceResponse(
                             mimeType,
                             "UTF-8",
                             response.code,
-                            "OK",
+                            if (response.message.isEmpty()) "OK" else response.message,
                             headers,
                             inputStream
                         )
