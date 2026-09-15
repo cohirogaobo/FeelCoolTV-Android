@@ -125,7 +125,8 @@
         .media-item { display: flex; flex-direction: column; gap: 8px; width: 220px; flex-shrink: 0; outline: none; will-change: transform; }
         
         .card-image-wrapper { 
-            width: 100%; height: 124px; border-radius: 12px; background-color: #050505; 
+            width: 100%; height: 124px; border-radius: 12px; 
+            background-color: rgba(255,255,255,0.05); 
             border: 2px solid transparent; position: relative; overflow: hidden; 
             transition: transform 0.25s ease, border-color 0.25s ease;
             -webkit-mask-image: -webkit-linear-gradient(white, white); transform: translateZ(0); 
@@ -137,16 +138,6 @@
         
         .media-item:focus .card-image-wrapper, .media-item.focused .card-image-wrapper { transform: scale3d(1.06, 1.06, 1); border-color: rgba(255,255,255,0.85); box-shadow: 0 12px 24px rgba(0,0,0,0.4); z-index: 10; }
         .media-item:focus .card-info, .media-item.focused .card-info { opacity: 1; transform: translateY(0); }
-
-        .toast-container {
-            position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%) translateY(20px);
-            background: rgba(0,0,0,0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            color: #fff; padding: 12px 28px; border-radius: 20px; font-size: 15px; font-weight: 500;
-            opacity: 0; pointer-events: none; transition: opacity 0.3s ease, transform 0.3s ease;
-            z-index: 999; border: 1px solid rgba(255,255,255,0.1); letter-spacing: 0.5px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            overflow: hidden; -webkit-mask-image: -webkit-linear-gradient(white, white); transform: translateZ(0);
-        }
-        .toast-container.show { opacity: 1; transform: translateX(-50%) translateY(0) translateZ(0); }
     </style>
 </head>
 <body class="preload">
@@ -164,7 +155,6 @@
         </div>
 
         <div class="nav-list" id="sidebarNav">
-            <!-- 已经彻底移除搜索项。现在 row: 1 是 TMDB，row: 2 是有线电视 -->
             <div class="nav-item focusable" tabindex="0" data-row="1" data-col="0" data-section-name="很酷 TV+" data-api-bind="tmdb">
                 <svg viewBox="0 0 24 24"><path d="M10 16.5l6-4.5-6-4.5v9zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg><span class="item-text">现在观看</span>
             </div>
@@ -203,13 +193,10 @@
         </div>
     </div>
     
-    <div class="toast-container" id="sysToast"></div>
-
     <script>
         var CONFIG_URL = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/main/config.json"; 
         var currentPlayingStream = null;
 
-        // 本地缓存的 IPTV 帧映射对象
         var iptvFrameCache = {};
         try { iptvFrameCache = JSON.parse(localStorage.getItem('iptv_frames') || '{}'); } catch(e){}
 
@@ -219,26 +206,17 @@
         };
 
         var currentFocusEl = null; 
-        var toastTimeout;
         var currentTrackRow = -1;
         var bgPreviewTimeout = null;
         var splashRemoved = false;
         
         var trendingData = {
-            bg: '', // 默认彻底纯黑，避免 TMDB API 未响应时展示无效静态图
+            bg: '', 
             title: '加载热门中...',
             sub: '时下热门'
         };
 
         var ROW_DATA = {}; 
-
-        window.showToast = function(msg) {
-            var toast = document.getElementById('sysToast');
-            toast.innerText = msg;
-            toast.classList.add('show');
-            clearTimeout(toastTimeout);
-            toastTimeout = setTimeout(function() { toast.classList.remove('show'); }, 2200);
-        };
 
         function removeNativeSplash() {
             if(splashRemoved) return;
@@ -252,7 +230,6 @@
             document.getElementById('heroBg').style.opacity = '0';
             document.getElementById('baseLayer').style.opacity = '0';
             
-            // 视频开始播放 2.5 秒后，向底层请求一张截图作为持久海报
             setTimeout(function() {
                 if (currentPlayingStream && window.FeelCoolTV && window.FeelCoolTV.cacheCurrentFrame) {
                     window.FeelCoolTV.cacheCurrentFrame(currentPlayingStream);
@@ -260,7 +237,6 @@
             }, 2500);
         };
 
-        // 底层截图完成后回传，存入 LocalStorage 
         window.onFrameCached = function(url, path) {
             iptvFrameCache[url] = path;
             localStorage.setItem('iptv_frames', JSON.stringify(iptvFrameCache));
@@ -283,16 +259,12 @@
                     var imgUrl = item.img;
                     var bgUrl = item.bg;
                     
-                    // 神级优化：剥夺外网配置静态图片的权限，全自动接管 IPTV 画面的智能展示
                     if (item.action && item.action.startsWith('iptv:')) {
                         var sUrl = item.action.substring(5);
                         if (iptvFrameCache[sUrl]) {
-                            imgUrl = iptvFrameCache[sUrl];
-                            bgUrl = iptvFrameCache[sUrl]; // 连带将焦点背景图也设置成本地缓存帧
+                            bgUrl = iptvFrameCache[sUrl];
                         } else {
-                            // 首次使用未截帧，全权使用纯黑色和空背景
-                            imgUrl = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='; 
-                            bgUrl = '';
+                            bgUrl = ''; 
                         }
                     }
                     
@@ -416,11 +388,6 @@
         }
 
         function updateHeroUI(bg, title, sub, brandName, svgIconHTML) {
-            if(bg) {
-                document.getElementById('heroBg').style.backgroundImage = "url('" + bg + "')";
-            } else {
-                document.getElementById('heroBg').style.backgroundImage = "none";
-            }
             document.getElementById('heroTitle').innerText = title;
             document.getElementById('heroSub').innerText = sub;
             
@@ -431,6 +398,19 @@
                 document.getElementById('heroBrandText').innerText = brandName;
             }
             document.getElementById('heroSub').style.color = (sub.indexOf('TMDB') !== -1) ? '#00d474' : 'rgba(255,255,255,0.6)';
+
+            if(bg) {
+                var loader = new Image();
+                loader.onload = function() {
+                    var curTitle = document.getElementById('heroTitle').innerText;
+                    if (curTitle === title) {
+                        document.getElementById('heroBg').style.backgroundImage = "url('" + bg + "')";
+                    }
+                };
+                loader.src = bg;
+            } else {
+                document.getElementById('heroBg').style.backgroundImage = "none";
+            }
         }
 
         function updateClock() {
@@ -569,9 +549,8 @@
                 case 'ArrowUp':
                     e.preventDefault();
                     if (col === 0) {
-                        // 修正：从 TMDB (row 1) 往上直接跳回用户头像 (row -1)
                         if (row === 1) nextEl = findTargetFocusable(-1, 0) || currentFocusEl;
-                        else if (row === 4) nextEl = findTargetFocusable(3, 0) || currentFocusEl; // 从设置跳回流媒体
+                        else if (row === 4) nextEl = findTargetFocusable(3, 0) || currentFocusEl;
                         else nextEl = findTargetFocusable(row - 1, 0) || currentFocusEl;
                     } else {
                         nextEl = findTargetFocusable(row, 0) || currentFocusEl;
@@ -596,7 +575,6 @@
                     var action = currentFocusEl.getAttribute('data-action');
                     if (action) {
                         if (!action.startsWith('iptv:')) {
-                            // 非 IPTV 应用才重置，保证桌面恢复海报状态
                             clearTimeout(bgPreviewTimeout);
                             currentPlayingStream = null;
                             document.getElementById('heroBg').style.opacity = '1';
