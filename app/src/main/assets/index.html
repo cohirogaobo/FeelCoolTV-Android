@@ -12,25 +12,39 @@
             --animation-speed: 0.35s; 
         }
 
-        ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; opacity: 0 !important; }
+        /* 【100%封杀滚动条】：通过强力 CSS，让滚动条和系统反弹效果全部失效 */
+        html, body {
+            margin: 0; padding: 0; 
+            width: 100vw; height: 100vh;
+            max-width: 100%; max-height: 100%;
+            background-color: transparent !important; color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+            overflow: hidden !important; user-select: none;
+            position: fixed; 
+            overscroll-behavior: none; /* 防止视口边缘反弹回弹 */
+            touch-action: none;
+            -webkit-font-smoothing: antialiased; 
+            text-rendering: optimizeLegibility;
+        }
+
+        * {
+            scrollbar-width: none !important; 
+            -ms-overflow-style: none !important;
+        }
+
+        ::-webkit-scrollbar { 
+            display: none !important; 
+            width: 0px !important; 
+            height: 0px !important; 
+            background: transparent !important;
+            -webkit-appearance: none !important;
+        }
 
         .preload * {
             -webkit-transition: none !important;
             transition: none !important;
             animation: none !important;
         }
-
-        html, body {
-            margin: 0; padding: 0; width: 100%; height: 100%;
-            background-color: transparent !important; color: #fff;
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
-            overflow: hidden !important; user-select: none;
-            position: fixed; 
-            -webkit-font-smoothing: antialiased; 
-            text-rendering: optimizeLegibility;
-        }
-
-        * { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
         
         .base-layer { 
             position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
@@ -55,13 +69,16 @@
 
         .sidebar {
             position: fixed; left: 20px; top: 20px; bottom: 20px; width: 205px;
-            background: var(--glass-bg); backdrop-filter: blur(35px); -webkit-backdrop-filter: blur(35px);
+            background: var(--glass-bg); 
+            backdrop-filter: blur(35px); -webkit-backdrop-filter: blur(35px);
             border-radius: 20px; border: 1px solid var(--glass-border); z-index: 10;
             display: flex; flex-direction: column; padding: 18px 12px; box-sizing: border-box;
             transition: width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), padding var(--animation-speed) ease;
             overflow: hidden; 
-            -webkit-mask-image: -webkit-radial-gradient(white, black);
             background-clip: padding-box;
+            -webkit-mask-image: -webkit-linear-gradient(white, white);
+            transform: translateZ(0); 
+            will-change: width;
         }
         
         .sidebar.collapsed { width: 68px; padding: 18px 0; }
@@ -98,7 +115,6 @@
             display: flex; flex-direction: column; gap: 4px; overflow-y: auto; overflow-x: hidden; flex-grow: 1; 
             padding: 4px; margin: -4px; 
         }
-        .nav-list::-webkit-scrollbar { display: none; }
         
         .settings-section {
             flex-shrink: 0; display: flex; flex-direction: column;
@@ -163,7 +179,7 @@
         .carousel-track { 
             display: flex; gap: 20px; padding: 5px 0; z-index: 5;
             width: max-content; 
-            transform: translateZ(0); 
+            transform: translate3d(0, 0, 0); 
             transition: transform 0.35s cubic-bezier(0.25, 1, 0.5, 1); 
             will-change: transform;
         }
@@ -174,7 +190,8 @@
             width: 100%; height: 124px; border-radius: 12px; background-color: rgba(255,255,255,0.05); 
             border: 2px solid transparent; position: relative; overflow: hidden; 
             transition: transform 0.25s ease, border-color 0.25s ease;
-            -webkit-mask-image: -webkit-radial-gradient(white, black);
+            -webkit-mask-image: -webkit-linear-gradient(white, white);
+            transform: translateZ(0); 
         }
         .card-image-wrapper img { width: 100%; height: 100%; object-fit: cover; }
         .card-info { opacity: 0.6; transition: opacity 0.25s ease, transform 0.25s ease; transform: translateY(-2px); }
@@ -188,11 +205,14 @@
 
         .toast-container {
             position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%) translateY(20px);
-            background: rgba(0,0,0,0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            background: rgba(0,0,0,0.7); 
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             color: #fff; padding: 12px 28px; border-radius: 20px; font-size: 15px; font-weight: 500;
             opacity: 0; pointer-events: none; transition: opacity 0.3s ease, transform 0.3s ease;
             z-index: 999; border: 1px solid rgba(255,255,255,0.1); letter-spacing: 0.5px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            overflow: hidden; -webkit-mask-image: -webkit-radial-gradient(white, black);
+            overflow: hidden; 
+            -webkit-mask-image: -webkit-linear-gradient(white, white);
+            transform: translateZ(0);
         }
         .toast-container.show { opacity: 1; transform: translateX(-50%) translateY(0) translateZ(0); }
     </style>
@@ -205,7 +225,7 @@
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header focusable" tabindex="0" data-row="-1" data-col="0" data-no-bg-change="true">
             <div class="user-left">
-                <div class="user-avatar"><img id="uiAvatar" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="User"></div>
+                <div class="user-avatar"><img id="uiAvatar" decoding="async" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="User"></div>
                 <span class="user-name" id="uiUserName">加载中</span>
             </div>
             <div class="sidebar-clock" id="sidebarClock">--:--</div>
@@ -259,6 +279,9 @@
     <script>
         var CONFIG_URL = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/main/config.json"; 
         
+        // 用于记录当前正在播放或待播放的流地址，避免跨卡片焦点时重复切后台视频
+        var currentPlayingStream = null;
+
         var globalConfig = {
             user: { name: "加载中", avatar_url: "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" },
             api: { tmdb_api_key: "" }
@@ -283,7 +306,7 @@
             toast.innerText = msg;
             toast.classList.add('show');
             clearTimeout(toastTimeout);
-            toastTimeout = setTimeout(function() { toast.classList.remove('show'); }, 2500);
+            toastTimeout = setTimeout(function() { toast.classList.remove('show'); }, 2200);
         };
 
         function removeNativeSplash() {
@@ -295,7 +318,7 @@
                         window.FeelCoolTV.hideSplash();
                     }
                 } catch(e) {}
-            }, 100); 
+            }, 100);
         }
 
         window.onBackgroundVideoStarted = function() {
@@ -312,16 +335,17 @@
             var html = '';
             
             if (ROW_DATA[rowId] && ROW_DATA[rowId].length > 0) {
-                ROW_DATA[rowId].forEach(function(item, index) {
+                var rowItems = ROW_DATA[rowId];
+                for (var index = 0; index < rowItems.length; index++) {
+                    var item = rowItems[index];
                     var col = index + 1;
                     html += '<div class="media-item focusable" tabindex="0" data-row="' + rowId + '" data-col="' + col + '" data-bg="' + item.bg + '" data-title="' + item.title + '" data-sub="' + item.sub + '" data-action="' + item.action + '">' +
-                                '<div class="card-image-wrapper"><img src="' + item.img + '" alt="' + item.title + '"></div>' +
+                                '<div class="card-image-wrapper"><img src="' + item.img + '" decoding="async" loading="lazy" alt="' + item.title + '"></div>' +
                                 '<div class="card-info"><div class="card-title">' + item.title + '</div><div class="card-meta">' + item.sub + '</div></div>' +
                             '</div>';
-                });
+                }
                 track.innerHTML = html;
-                void track.offsetHeight;
-                track.style.transform = 'translateX(0px)';
+                track.style.transform = 'translate3d(0, 0, 0)';
                 heroText.classList.remove('lowered');
             } else {
                 track.innerHTML = '';
@@ -337,7 +361,6 @@
         }
 
         function initApp() {
-            // 🔥 秒进逻辑：恢复瞬间移除开屏图，绝不等待
             removeNativeSplash();
             
             var localConfigStr = localStorage.getItem('feelcool_config');
@@ -406,6 +429,7 @@
             
             var attempt = 0;
             var testImg = new Image();
+            testImg.decoding = "async"; 
             testImg.onload = function() {
                 trendingData.bg = mirrors[attempt];
                 if (currentFocusEl && currentFocusEl.getAttribute('data-api-bind') === 'tmdb') {
@@ -422,7 +446,6 @@
 
         function fetchTrendingShow() {
             var apiKey = globalConfig.api.tmdb_api_key || 'f7762624a95e4c3823500736d40162cd';
-            
             var cachedTMDB = [];
             try {
                 cachedTMDB = JSON.parse(localStorage.getItem('tmdb_cache') || '[]');
@@ -443,7 +466,7 @@
                         var freshList = data.results.slice(0, 5).map(function(item) {
                             var rating = item.vote_average ? item.vote_average.toFixed(1) : '暂无';
                             return {
-                                bg: item.backdrop_path, // 仅存储路径，节省本地空间
+                                bg: item.backdrop_path,
                                 title: item.name || item.original_name,
                                 sub: 'TMDB 时下流行 · ' + rating + '分'
                             };
@@ -452,7 +475,6 @@
                         if (cachedTMDB.length === 0) {
                             applyTMDBHero(freshList[0]);
                         }
-                        
                         localStorage.setItem('tmdb_cache', JSON.stringify(freshList.slice(1, 4))); 
                     }
                 })
@@ -478,9 +500,7 @@
             var now = new Date();
             var hours = now.getHours();
             var minutes = now.getMinutes();
-            hours = hours < 10 ? '0' + hours : hours;
-            minutes = minutes < 10 ? '0' + minutes : minutes;
-            document.getElementById('sidebarClock').innerText = hours + ':' + minutes;
+            document.getElementById('sidebarClock').innerText = (hours < 10 ? '0' + hours : hours) + ':' + (minutes < 10 ? '0' + minutes : minutes);
         }
         setInterval(updateClock, 1000); updateClock();
 
@@ -512,24 +532,55 @@
                 mainContent.classList.remove('expanded');
             }
 
-            document.querySelectorAll('.active-row').forEach(function(el){ el.classList.remove('active-row'); });
+            var activeRow = document.querySelector('.active-row');
+            if (activeRow) activeRow.classList.remove('active-row');
+
             if (col > 0) {
                 var sidebarItem = document.querySelector('.focusable[data-row="' + row + '"][data-col="0"]');
                 if (sidebarItem) sidebarItem.classList.add('active-row');
             }
 
-            clearTimeout(bgPreviewTimeout);
-            if (window.FeelCoolTV && window.FeelCoolTV.stopBackgroundVideo) {
-                window.FeelCoolTV.stopBackgroundVideo();
-            }
-            document.getElementById('heroBg').style.opacity = '1';
-            document.getElementById('baseLayer').style.opacity = '1';
-
             var noBgChange = targetEl.getAttribute('data-no-bg-change') === 'true';
             var isTMDB = targetEl.getAttribute('data-api-bind') === 'tmdb';
             var sectionName = targetEl.getAttribute('data-section-name') || '很酷 TV+';
-            var actionStr = targetEl.getAttribute('data-action');
+            var targetAction = targetEl.getAttribute('data-action');
+            
+            // 【重磅功能】：当焦点在左侧"有线电视"导航时，自动获取其第一张卡片的视频链接
+            var isNavCableTV = (col === 0 && sectionName === '有线电视');
+            if (isNavCableTV) {
+                var firstCard = document.querySelector('.focusable[data-row="' + row + '"][data-col="1"]');
+                if (firstCard) {
+                    targetAction = firstCard.getAttribute('data-action');
+                }
+            }
 
+            // 解析本次焦点要播放的链接
+            var targetStreamUrl = (targetAction && targetAction.startsWith('iptv:')) ? targetAction.substring(5) : null;
+
+            // 如果链接变了（说明切了频道），或者链接为空（说明退出了电视模块），才需要重新调用底层播放
+            if (targetStreamUrl !== currentPlayingStream) {
+                clearTimeout(bgPreviewTimeout);
+                currentPlayingStream = targetStreamUrl;
+
+                if (window.FeelCoolTV && window.FeelCoolTV.stopBackgroundVideo) {
+                    window.FeelCoolTV.stopBackgroundVideo();
+                }
+                
+                // 恢复纯图海报背景
+                document.getElementById('heroBg').style.opacity = '1';
+                document.getElementById('baseLayer').style.opacity = '1';
+
+                // 如果有新流，延迟1秒播放（防止快速按下时狂发网络请求）
+                if (targetStreamUrl) {
+                    bgPreviewTimeout = setTimeout(function() {
+                        if (window.FeelCoolTV && window.FeelCoolTV.playBackgroundVideo) {
+                            window.FeelCoolTV.playBackgroundVideo(targetStreamUrl);
+                        }
+                    }, 1000);
+                }
+            }
+
+            // 更新左侧图标和右上角文字
             var svgIconHTML = '';
             if (col === 0 || row === -1) {
                 var svgEl = targetEl.querySelector('svg');
@@ -537,8 +588,8 @@
             } else {
                 var activeSidebar = document.querySelector('.nav-item.active-row');
                 if (activeSidebar) {
-                    var svgEl = activeSidebar.querySelector('svg');
-                    if (svgEl) svgIconHTML = svgEl.outerHTML;
+                    var activeSvg = activeSidebar.querySelector('svg');
+                    if (activeSvg) svgIconHTML = activeSvg.outerHTML;
                 }
             }
 
@@ -553,19 +604,10 @@
                 }
             }
 
-            if (actionStr && actionStr.startsWith('iptv:')) {
-                var streamUrl = actionStr.substring(5);
-                bgPreviewTimeout = setTimeout(function() {
-                    if (window.FeelCoolTV && window.FeelCoolTV.playBackgroundVideo) {
-                        window.FeelCoolTV.playBackgroundVideo(streamUrl);
-                    }
-                }, 1000);
-            }
-
             if (col > 0 && row > 0 && row < 7) {
                 var track = document.getElementById('mainTrack');
                 var offset = col > 1 ? (col - 1) * 240 : 0;
-                if (track) track.style.transform = 'translateX(-' + offset + 'px)';
+                if (track) track.style.transform = 'translate3d(-' + offset + 'px, 0, 0)';
             }
         }
 
@@ -581,85 +623,77 @@
             return "false"; 
         };
 
-        function getVisibleFocusables() {
-            var all = Array.prototype.slice.call(document.querySelectorAll('.focusable'));
-            return all.filter(function(el) { return el.offsetParent !== null; }); 
+        function findTargetFocusable(r, c) {
+            return document.querySelector('.focusable[data-row="' + r + '"][data-col="' + c + '"]');
         }
 
         var lastKeyTime = 0;
         document.addEventListener('keydown', function(e) {
             var now = Date.now();
-            if (now - lastKeyTime < 180) { e.preventDefault(); return; }
+            if (now - lastKeyTime < 130) { e.preventDefault(); return; }
             lastKeyTime = now;
 
             if (!currentFocusEl) return;
             var row = parseInt(currentFocusEl.getAttribute('data-row'));
             var col = parseInt(currentFocusEl.getAttribute('data-col'));
-            var nextEl = currentFocusEl;
-            var visibles = getVisibleFocusables();
-
-            function findNext(r, c) {
-                for (var i = 0; i < visibles.length; i++) {
-                    if (parseInt(visibles[i].getAttribute('data-row')) === r && parseInt(visibles[i].getAttribute('data-col')) === c) return visibles[i];
-                }
-                return null;
-            }
+            var nextEl = null;
 
             switch(e.key) {
                 case 'ArrowDown':
                     e.preventDefault();
                     if (col === 0) {
-                        nextEl = findNext(row + 1, 0) || currentFocusEl;
+                        nextEl = findTargetFocusable(row + 1, 0) || currentFocusEl;
                     } else {
-                        nextEl = findNext(row, 0) || currentFocusEl;
+                        nextEl = findTargetFocusable(row, 0) || currentFocusEl;
                     }
                     break;
                 case 'ArrowUp':
                     e.preventDefault();
                     if (col === 0) {
-                        if (row === 0) {
-                            nextEl = findNext(-1, 0) || currentFocusEl;
-                        } else {
-                            nextEl = findNext(row - 1, 0) || currentFocusEl;
-                        }
+                        nextEl = (row === 0) ? findTargetFocusable(-1, 0) : findTargetFocusable(row - 1, 0);
+                        if (!nextEl) nextEl = currentFocusEl;
                     } else {
-                        nextEl = findNext(row, 0) || currentFocusEl;
+                        nextEl = findTargetFocusable(row, 0) || currentFocusEl;
                     }
                     break;
                 case 'ArrowRight':
                     e.preventDefault();
                     if (col === 0) {
-                        if (row === -1) {
-                            nextEl = findNext(1, 1) || currentFocusEl; 
-                        } else {
-                            nextEl = findNext(row, 1) || currentFocusEl; 
-                        }
+                        nextEl = (row === -1) ? findTargetFocusable(1, 1) : findTargetFocusable(row, 1);
+                        if (!nextEl) nextEl = currentFocusEl;
                     } else {
-                        nextEl = findNext(row, col + 1) || currentFocusEl;
+                        nextEl = findTargetFocusable(row, col + 1) || currentFocusEl;
                     }
                     break;
                 case 'ArrowLeft':
                     e.preventDefault();
                     if (col > 1) {
-                        nextEl = findNext(row, col - 1) || currentFocusEl;
+                        nextEl = findTargetFocusable(row, col - 1) || currentFocusEl;
                     } else if (col === 1) {
-                        nextEl = findNext(row, 0) || currentFocusEl; 
+                        nextEl = findTargetFocusable(row, 0) || currentFocusEl; 
                     }
                     break;
                 case 'Enter':
                     e.preventDefault();
                     var action = currentFocusEl.getAttribute('data-action');
                     if (action) {
+                        // 【防黑屏修复】：在进入全屏或打开其他应用前，主动通知 JS 层重置状态。
+                        // 防止用户退回到桌面后，原本背景应该展示的海报图被强行透明化而导致满屏黑
+                        clearTimeout(bgPreviewTimeout);
+                        currentPlayingStream = null;
+                        document.getElementById('heroBg').style.opacity = '1';
+                        document.getElementById('baseLayer').style.opacity = '1';
+
                         if (window.FeelCoolTV && window.FeelCoolTV.executeAction) {
                             window.FeelCoolTV.executeAction(action, document.getElementById('heroTitle').innerText);
                         }
                     } else if (col === 0 && row >= 0) {
-                        var firstCard = findNext(row, 1);
+                        var firstCard = findTargetFocusable(row, 1);
                         if (firstCard) nextEl = firstCard;
                     }
                     break;
             }
-            if (nextEl !== currentFocusEl) setFocus(nextEl);
+            if (nextEl && nextEl !== currentFocusEl) setFocus(nextEl);
         });
 
         initApp();
