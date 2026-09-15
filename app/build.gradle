@@ -7,7 +7,7 @@ android {
         applicationId "com.feelcool.tv"
         minSdk 23
         targetSdk 33 
-        versionCode 3; versionName "2.0" 
+        versionCode 4; versionName "2.8" 
 
         // 仅保留主流电视架构，剔除 x86/x86_64 库，大幅减少包体和运行时 DEX 尺寸
         ndk {
