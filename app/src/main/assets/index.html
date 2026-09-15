@@ -1,313 +1,630 @@
-package com.feelcool.tv
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="referrer" content="no-referrer">
+    <title>Feel Cool TV - Launcher</title>
+    <style>
+        :root {
+            --glass-bg: rgba(30, 30, 30, 0.45);
+            --glass-border: rgba(255, 255, 255, 0.05);
+            --animation-speed: 0.3s; 
+        }
 
-import android.content.ComponentName
-import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Color
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.view.KeyEvent
-import android.view.TextureView
-import android.view.View
-import android.view.WindowManager
-import android.webkit.JavascriptInterface
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import okhttp3.Dns
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.io.ByteArrayInputStream
-import java.io.File
-import java.io.FileOutputStream
-import java.net.InetAddress
-import java.util.concurrent.TimeUnit
+        html, body {
+            margin: 0; padding: 0; width: 100vw; height: 100vh;
+            max-width: 100%; max-height: 100%;
+            background-color: transparent !important; color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+            overflow: hidden !important; user-select: none;
+            position: fixed; overscroll-behavior: none; touch-action: none;
+            -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+        }
 
-class MainActivity : AppCompatActivity() {
-    private lateinit var splashView: ImageView
-    private lateinit var webView: WebView
+        * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
+        ::-webkit-scrollbar { display: none !important; width: 0px !important; height: 0px !important; background: transparent !important; -webkit-appearance: none !important; }
+
+        .preload * { -webkit-transition: none !important; transition: none !important; animation: none !important; }
+        
+        .base-layer { 
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
+            background-color: #050505; z-index: -3; 
+            transition: opacity 0.4s ease; opacity: 1;
+        }
+        
+        .hero-background {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background-size: cover; background-position: center; background-color: #000;
+            z-index: -2; transition: opacity 0.4s ease; will-change: opacity;
+        }
+
+        .hero-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(to right, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 60%, transparent 100%),
+                        linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.05) 40%, transparent 100%);
+            z-index: -1; transition: background 0.4s ease;
+        }
+
+        .sidebar {
+            position: fixed; left: 20px; top: 20px; bottom: 20px; width: 205px;
+            background: var(--glass-bg); backdrop-filter: blur(35px); -webkit-backdrop-filter: blur(35px);
+            border-radius: 20px; border: 1px solid var(--glass-border); z-index: 10;
+            display: flex; flex-direction: column; padding: 18px 12px; box-sizing: border-box;
+            transition: width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), padding var(--animation-speed) ease;
+            overflow: hidden; background-clip: padding-box; -webkit-mask-image: -webkit-linear-gradient(white, white);
+            transform: translateZ(0); will-change: width;
+        }
+        
+        .sidebar.collapsed { width: 68px; padding: 18px 0; }
+
+        .sidebar-header {
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 6px 8px; margin-bottom: 20px; border-radius: 12px;
+            transition: all 0.25s ease; cursor: pointer; outline: none; white-space: nowrap; flex-shrink: 0; 
+        }
+        .sidebar.collapsed .sidebar-header { justify-content: center; padding: 6px 0; }
+        .sidebar-header.focused { background-color: rgba(255, 255, 255, 0.15); transform: scale3d(1.02, 1.02, 1); box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 2; }
+        
+        .user-left { display: flex; align-items: center; }
+        .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: #444; margin-right: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,0.2); transition: margin var(--animation-speed) ease; flex-shrink: 0; }
+        .sidebar.collapsed .user-avatar { margin-right: 0; }
+        .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        
+        .user-name, .sidebar-clock, .nav-section-title { transition: opacity 0.2s ease, max-width 0.2s ease; opacity: 1; overflow: hidden; }
+        .sidebar.collapsed .user-name, .sidebar.collapsed .sidebar-clock { opacity: 0; max-width: 0; margin: 0; display: none; }
+        .sidebar.collapsed .nav-section-title { opacity: 0; max-height: 0; margin: 0; }
+        
+        .user-name { font-size: 15px; font-weight: 400; letter-spacing: normal; }
+        .sidebar-clock { font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.7); }
+        
+        .nav-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; overflow-x: hidden; flex-grow: 1; padding: 4px; margin: -4px; }
+        .settings-section { flex-shrink: 0; display: flex; flex-direction: column; }
+
+        .nav-item { 
+            display: flex; align-items: center; width: 170px; height: 44px; padding: 0 12px; margin: 0 auto; box-sizing: border-box; 
+            border-radius: 12px; flex-shrink: 0; font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.65); white-space: nowrap;
+            cursor: pointer; outline: none; 
+            transition: width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), padding var(--animation-speed) ease, background-color 0.25s ease, color 0.25s ease, transform 0.25s ease; 
+        }
+        
+        .sidebar.collapsed .nav-item { width: 44px; padding: 0; justify-content: center; }
+        .nav-item svg { width: 20px; height: 20px; margin-right: 12px; fill: currentColor; opacity: 0.8; display: block; flex-shrink: 0; transition: margin 0.25s ease; }
+        .sidebar.collapsed .nav-item svg { margin-right: 0; }
+        
+        .item-text { transition: max-width 0.25s ease, opacity 0.2s ease; max-width: 150px; overflow: hidden; opacity: 1; }
+        .sidebar.collapsed .item-text { max-width: 0; opacity: 0; }
+        
+        .nav-item:focus, .nav-item.focused { background-color: rgba(255, 255, 255, 0.85); color: rgba(0, 0, 0, 0.9) !important; transform: scale3d(1.04, 1.04, 1); box-shadow: 0 6px 16px rgba(0,0,0,0.15); z-index: 2; }
+        .sidebar.collapsed .nav-item.focused svg { color: rgba(0,0,0,0.9); }
+        .nav-item.active-row { background-color: rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.95); }
+        .nav-divider { height: 1px; background: rgba(255,255,255,0.06); margin: 12px 10px; transition: margin 0.25s ease; flex-shrink: 0; }
+        .sidebar.collapsed .nav-divider { margin: 12px 10px; }
+        .nav-section-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 0 10px 8px 10px; flex-shrink: 0; }
+
+        .main-content { 
+            position: absolute; top: 0; bottom: 0; z-index: 2; left: 88px; width: calc(100% - 88px); 
+            display: flex; flex-direction: column; justify-content: flex-end; padding: 40px 45px; box-sizing: border-box; 
+            transform: translateX(137px); transition: transform var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1); will-change: transform;
+        }
+        .main-content.expanded { transform: translateX(0); }
+
+        .hero-text { margin-bottom: 25px; transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease; display: flex; flex-direction: column; justify-content: flex-end; }
+        .hero-text.lowered { transform: translateY(205px); }
+
+        .brand-title { font-size: 14px; font-weight: 400; letter-spacing: 1px; color: rgba(255,255,255,0.75); margin-bottom: 8px; display: flex; align-items: center; }
+        .brand-title svg { width: 16px !important; height: 16px !important; fill: #fff; display: block; flex-shrink: 0; margin-right: 6px; } 
+        #heroBrandText { transform: translateY(1px); line-height: 1; }
+
+        .main-title { font-size: 42px; font-weight: 800; margin: 0 0 6px 0; letter-spacing: -0.5px; line-height: 1.15; max-width: 75%; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .sub-title { font-size: 15px; color: rgba(255,255,255,0.6); max-width: 550px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 400; }
+
+        .carousel-container { width: 100%; height: 240px; padding-top: 20px; padding-bottom: 20px; margin-top: -20px; margin-bottom: -20px; position: relative; }
+        .carousel-track { display: flex; gap: 20px; padding: 5px 0; z-index: 5; width: max-content; transform: translate3d(0, 0, 0); transition: transform 0.35s cubic-bezier(0.25, 1, 0.5, 1); will-change: transform; }
+
+        .media-item { display: flex; flex-direction: column; gap: 8px; width: 220px; flex-shrink: 0; outline: none; will-change: transform; }
+        
+        .card-image-wrapper { 
+            width: 100%; height: 124px; border-radius: 12px; 
+            background-color: rgba(255,255,255,0.05); 
+            border: 2px solid transparent; position: relative; overflow: hidden; 
+            transition: transform 0.25s ease, border-color 0.25s ease;
+            -webkit-mask-image: -webkit-linear-gradient(white, white); transform: translateZ(0); 
+        }
+        .card-image-wrapper img { width: 100%; height: 100%; object-fit: cover; opacity: 1; transition: opacity 0.3s; }
+        .card-info { opacity: 0.6; transition: opacity 0.25s ease, transform 0.25s ease; transform: translateY(-2px); }
+        .card-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: normal; }
+        .card-meta { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+        
+        .media-item:focus .card-image-wrapper, .media-item.focused .card-image-wrapper { transform: scale3d(1.06, 1.06, 1); border-color: rgba(255,255,255,0.85); box-shadow: 0 12px 24px rgba(0,0,0,0.4); z-index: 10; }
+        .media-item:focus .card-info, .media-item.focused .card-info { opacity: 1; transform: translateY(0); }
+    </style>
+</head>
+<body class="preload">
+    <div class="base-layer" id="baseLayer"></div>
+    <div class="hero-background" id="heroBg"></div>
+    <div class="hero-overlay" id="heroOverlay"></div>
+
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header focusable" tabindex="0" data-row="-1" data-col="0" data-no-bg-change="true">
+            <div class="user-left">
+                <div class="user-avatar"><img id="uiAvatar" decoding="async" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="User"></div>
+                <span class="user-name" id="uiUserName">加载中</span>
+            </div>
+            <div class="sidebar-clock" id="sidebarClock">--:--</div>
+        </div>
+
+        <div class="nav-list" id="sidebarNav">
+            <div class="nav-item focusable" tabindex="0" data-row="1" data-col="0" data-section-name="很酷 TV+" data-api-bind="tmdb">
+                <svg viewBox="0 0 24 24"><path d="M10 16.5l6-4.5-6-4.5v9zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg><span class="item-text">现在观看</span>
+            </div>
+            
+            <div class="nav-item focusable" tabindex="0" data-row="2" data-col="0" data-section-name="有线电视" data-bg="" data-title="有线频道" data-sub="电视直播与资讯">
+                <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg><span class="item-text">有线电视</span>
+            </div>
+            
+            <div class="nav-item focusable" tabindex="0" data-row="3" data-col="0" data-section-name="流媒体" data-bg="https://images.unsplash.com/photo-1578022761797-b8636ac1773c?q=80&w=2564" data-title="流媒体" data-sub="在线视频生态">
+                <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm-10 9V7l5 3.5-5 3.5z"/></svg><span class="item-text">流媒体</span>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <div class="nav-divider"></div>
+            <div class="nav-section-title">设置</div>
+            
+            <div class="nav-item focusable" tabindex="0" data-row="4" data-col="0" data-section-name="系统设置" data-bg="https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=2564" data-title="系统偏好" data-sub="网络与设备管理" data-action="app:com.xiaomi.mitv.settings">
+                <svg viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49-.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg><span class="item-text">系统设置</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content" id="mainContent">
+        <div class="hero-text" id="heroText">
+            <div class="brand-title" id="heroBrand">
+                <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>
+                <span id="heroBrandText">很酷 TV+</span>
+            </div>
+            <div class="sub-title" id="heroSub" style="color: #0A84FF; font-weight: 500; margin-bottom: 4px;">启动中</div>
+            <h1 class="main-title" id="heroTitle">系统初始化...</h1>
+        </div>
+
+        <div class="carousel-container">
+            <div class="carousel-track" id="mainTrack"></div>
+        </div>
+    </div>
     
-    private var player: ExoPlayer? = null
-    private lateinit var textureView: TextureView
-    
-    private var backPressCount = 0
-    private var lastBackPressTime = 0L
+    <script>
+        // 加入原生帧同步 API 填充垫，老电视也能获得丝滑动画
+        var raf = window.requestAnimationFrame || window.webkitRequestAnimationFrame || function(cb) { setTimeout(cb, 16); };
 
-    private var isFullScreenIptv = false
-    private var iptvExitCount = 0
+        var CONFIG_URL = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/main/config.json"; 
+        var currentPlayingStream = null;
 
-    private val antiSleepHandler = Handler(Looper.getMainLooper())
-    private val antiSleepRunnable = object : Runnable {
-        override fun run() {
-            webView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_UNKNOWN))
-            webView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_UNKNOWN))
-            antiSleepHandler.postDelayed(this, 120 * 1000) 
-        }
-    }
+        var iptvFrameCache = {};
+        try { iptvFrameCache = JSON.parse(localStorage.getItem('iptv_frames') || '{}'); } catch(e){}
 
-    private val okHttpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .dns(object : Dns {
-                override fun lookup(hostname: String): List<InetAddress> {
-                    if (hostname == "api.themoviedb.org") {
-                        return listOf(
-                            InetAddress.getByName("104.16.61.155"),
-                            InetAddress.getByName("104.16.62.155"),
-                            InetAddress.getByName("13.224.157.34")
-                        )
-                    }
-                    return Dns.SYSTEM.lookup(hostname)
+        var globalConfig = {
+            user: { name: "加载中", avatar_url: "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" },
+            api: { tmdb_api_key: "" }
+        };
+
+        var currentFocusEl = null; 
+        var currentTrackRow = -1;
+        var bgPreviewTimeout = null;
+        var splashRemoved = false;
+        
+        var trendingData = {
+            bg: '', 
+            title: '加载热门中...',
+            sub: '时下热门'
+        };
+
+        var ROW_DATA = {}; 
+
+        // 修复1：使用智能轮询，哪怕旧电视底层注入慢，只要注入完毕立即销毁开屏
+        function removeNativeSplash() {
+            if(splashRemoved) return;
+            var attempts = 0;
+            var checkTimer = setInterval(function() {
+                if (window.FeelCoolTV && window.FeelCoolTV.hideSplash) {
+                    window.FeelCoolTV.hideSplash();
+                    splashRemoved = true;
+                    clearInterval(checkTimer);
                 }
-            })
-            .build()
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.BLACK))
-        super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        
-        val layout = FrameLayout(this)
-        layout.setBackgroundColor(Color.BLACK)
-        
-        textureView = TextureView(this)
-        layout.addView(textureView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-
-        webView = WebView(this)
-        webView.setBackgroundColor(Color.BLACK)
-        webView.isVerticalScrollBarEnabled = false
-        webView.isHorizontalScrollBarEnabled = false
-        webView.overScrollMode = View.OVER_SCROLL_NEVER
-        webView.scrollBarStyle = View.SCROLLBARS_OUTSIDE_OVERLAY
-        
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            databaseEnabled = true 
-            mediaPlaybackRequiresUserGesture = false
-            useWideViewPort = true
-            loadWithOverviewMode = true
-            textZoom = 100 
-            allowFileAccessFromFileURLs = true
-            allowUniversalAccessFromFileURLs = true
-            cacheMode = WebSettings.LOAD_DEFAULT
-            setSupportZoom(false)
-            builtInZoomControls = false
-            displayZoomControls = false
-            @Suppress("DEPRECATION")
-            setRenderPriority(WebSettings.RenderPriority.HIGH)
+                attempts++;
+                if (attempts > 20) clearInterval(checkTimer); // 超时1秒放弃，交给原生层的 onPageFinished 强行兜底
+            }, 50);
         }
-        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-        webView.isFocusable = true
-        webView.isFocusableInTouchMode = true
-        
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                val url = request?.url.toString()
-                if (url.contains("api.themoviedb.org")) {
-                    if (request?.method.equals("OPTIONS", ignoreCase = true)) {
-                        val corsHeaders = mutableMapOf("Access-Control-Allow-Origin" to "*", "Access-Control-Allow-Methods" to "GET, POST, OPTIONS", "Access-Control-Allow-Headers" to "*", "Access-Control-Max-Age" to "86400")
-                        return WebResourceResponse("text/plain", "UTF-8", 200, "OK", corsHeaders, ByteArrayInputStream(ByteArray(0)))
-                    }
-                    try {
-                        val reqBuilder = Request.Builder().url(url)
-                        request?.requestHeaders?.forEach { (key, value) -> if (!key.equals("Host", ignoreCase = true)) reqBuilder.addHeader(key, value) }
-                        reqBuilder.header("User-Agent", "Mozilla/5.0")
-                        val response = okHttpClient.newCall(reqBuilder.build()).execute()
-                        val headers = mutableMapOf<String, String>()
-                        response.headers.forEach { (key, value) -> headers[key] = value }
-                        headers["Access-Control-Allow-Origin"] = "*"
-                        return WebResourceResponse("application/json", "UTF-8", response.code, if (response.message.isEmpty()) "OK" else response.message, headers, response.body?.byteStream())
-                    } catch (e: Exception) { e.printStackTrace() }
+
+        window.onBackgroundVideoStarted = function() {
+            document.getElementById('heroBg').style.opacity = '0';
+            document.getElementById('baseLayer').style.opacity = '0';
+            
+            setTimeout(function() {
+                if (currentPlayingStream && window.FeelCoolTV && window.FeelCoolTV.cacheCurrentFrame) {
+                    window.FeelCoolTV.cacheCurrentFrame(currentPlayingStream);
                 }
-                return super.shouldInterceptRequest(view, request)
-            }
-        }
-        
-        webView.addJavascriptInterface(JSBridge(), "FeelCoolTV")
-        layout.addView(webView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-        
-        splashView = ImageView(this)
-        splashView.setBackgroundColor(Color.TRANSPARENT)
-        val splashResId = resources.getIdentifier("splash", "drawable", packageName)
-        if (splashResId != 0) {
-            splashView.setImageResource(splashResId)
-            splashView.scaleType = ImageView.ScaleType.CENTER_CROP
-        }
-        layout.addView(splashView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-        
-        setContentView(layout)
-        webView.loadUrl("file:///android_asset/index.html")
+            }, 2500);
+        };
 
-        antiSleepHandler.postDelayed(antiSleepRunnable, 60 * 1000)
-    }
+        window.onFrameCached = function(url, path) {
+            iptvFrameCache[url] = path;
+            localStorage.setItem('iptv_frames', JSON.stringify(iptvFrameCache));
+        };
 
-    override fun onDestroy() {
-        super.onDestroy()
-        antiSleepHandler.removeCallbacksAndMessages(null)
-        player?.release()
-    }
-
-    override fun onBackPressed() {
-        if (isFullScreenIptv) {
-            iptvExitCount++
-            if (iptvExitCount >= 3) {
-                isFullScreenIptv = false
-                webView.visibility = View.VISIBLE
-                webView.requestFocus() 
-                player?.volume = 0f    
-                backPressCount = 0 
-            } else {
-                Toast.makeText(this, "再按 ${3 - iptvExitCount} 次退出全屏", Toast.LENGTH_SHORT).show()
-            }
-            return
-        }
-
-        webView.evaluateJavascript("javascript:window.handleHardwareBack()") { result ->
-            if (result == "\"true\"" || result == "true") {
-                backPressCount = 0
-            } else {
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - lastBackPressTime > 2000) {
-                    backPressCount = 1
-                    lastBackPressTime = currentTime
-                    Toast.makeText(this, "再按两次返回键退出", Toast.LENGTH_SHORT).show()
-                } else {
-                    backPressCount++
-                    if (backPressCount >= 3) {
-                        super.onBackPressed()
-                    } else {
-                        Toast.makeText(this, "再按 ${3 - backPressCount} 次返回键退出", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-        }
-    }
-
-    inner class JSBridge {
-        @JavascriptInterface
-        fun executeAction(action: String, title: String) {
-            if (action.startsWith("iptv:")) {
-                val url = action.substring(5)
-                runOnUiThread {
-                    isFullScreenIptv = true
-                    iptvExitCount = 0
-                    webView.visibility = View.GONE 
+        function renderTrack(rowId) {
+            if (currentTrackRow === rowId) return; 
+            currentTrackRow = rowId;
+            
+            var track = document.getElementById('mainTrack');
+            var heroText = document.getElementById('heroText');
+            var html = '';
+            
+            if (ROW_DATA[rowId] && ROW_DATA[rowId].length > 0) {
+                var rowItems = ROW_DATA[rowId];
+                for (var index = 0; index < rowItems.length; index++) {
+                    var item = rowItems[index];
+                    var col = index + 1;
                     
-                    if (player?.currentMediaItem?.localConfiguration?.uri?.toString() == url && player?.isPlaying == true) {
-                        player?.volume = 1f
-                    } else {
-                        if (player == null) setupPlayer()
-                        player?.volume = 1f
-                        player?.setMediaItem(MediaItem.fromUri(url))
-                        player?.prepare()
-                        player?.play()
+                    var imgUrl = item.img;
+                    var bgUrl = item.bg;
+                    
+                    if (item.action && item.action.startsWith('iptv:')) {
+                        var sUrl = item.action.substring(5);
+                        if (iptvFrameCache[sUrl]) bgUrl = iptvFrameCache[sUrl];
+                        else bgUrl = ''; 
                     }
+                    
+                    html += '<div class="media-item focusable" tabindex="0" data-row="' + rowId + '" data-col="' + col + '" data-bg="' + bgUrl + '" data-title="' + item.title + '" data-sub="' + item.sub + '" data-action="' + item.action + '">' +
+                                '<div class="card-image-wrapper"><img src="' + imgUrl + '" decoding="async" loading="lazy" alt="' + item.title + '"></div>' +
+                                '<div class="card-info"><div class="card-title">' + item.title + '</div><div class="card-meta">' + item.sub + '</div></div>' +
+                            '</div>';
                 }
-            } else if (action.startsWith("app:")) {
-                stopBackgroundVideo()
-                val pkg = action.substring(4)
-                var launchIntent = packageManager.getLeanbackLaunchIntentForPackage(pkg) ?: packageManager.getLaunchIntentForPackage(pkg)
-                
-                if (launchIntent == null) {
-                    val targetActivity = when (pkg) {
-                        "com.xiaomi.mitv.tvplayer" -> "com.xiaomi.mitv.tvplayer.MainActivity"
-                        "com.xiaomi.mitv.mediaexplorer" -> "com.xiaomi.mitv.mediaexplorer.MainActivity"
-                        "com.xiaomi.mitv.hyper.screensaver" -> "com.xiaomi.mitv.hyper.screensaver.MainActivity"
-                        "com.xiaomi.smarthome.tv" -> "com.xiaomi.smarthome.tv.MainActivity"
-                        else -> null
-                    }
-                    if (targetActivity != null) {
-                        launchIntent = Intent(Intent.ACTION_MAIN)
-                        launchIntent.component = ComponentName(pkg, targetActivity)
-                    }
-                }
-                
-                if (launchIntent != null) {
-                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    try {
-                        startActivity(launchIntent)
-                    } catch (e: Exception) {
-                        Toast.makeText(this@MainActivity, "应用被系统限制启动", Toast.LENGTH_SHORT).show()
-                    }
-                } else {
-                    Toast.makeText(this@MainActivity, "未找到应用，请确认是否安装", Toast.LENGTH_SHORT).show()
-                }
+                track.innerHTML = html;
+                track.style.transform = 'translate3d(0, 0, 0)';
+                heroText.classList.remove('lowered');
+            } else {
+                track.innerHTML = '';
+                heroText.classList.add('lowered');
             }
         }
 
-        @JavascriptInterface
-        fun hideSplash() {
-            runOnUiThread {
-                splashView.animate().alpha(0f).setDuration(300).withEndAction {
-                    splashView.visibility = View.GONE
-                    splashView.setImageDrawable(null)
-                }
+        function applyUserConfig() {
+            if(globalConfig && globalConfig.user) {
+                if (globalConfig.user.name) document.getElementById('uiUserName').innerText = globalConfig.user.name;
+                if (globalConfig.user.avatar_url) document.getElementById('uiAvatar').src = globalConfig.user.avatar_url;
             }
         }
 
-        private fun setupPlayer() {
-            player = ExoPlayer.Builder(this@MainActivity).build().apply {
-                setVideoTextureView(textureView)
-                addListener(object : Player.Listener {
-                    override fun onRenderedFirstFrame() {
-                        webView.setBackgroundColor(Color.TRANSPARENT)
-                        webView.evaluateJavascript("javascript:if(window.onBackgroundVideoStarted) window.onBackgroundVideoStarted();", null)
-                    }
-                })
-            }
-        }
-
-        @JavascriptInterface
-        fun playBackgroundVideo(url: String) {
-            runOnUiThread {
-                if (player == null) setupPlayer()
-                player?.volume = 0f 
-                player?.setMediaItem(MediaItem.fromUri(url))
-                player?.prepare()
-                player?.play()
-            }
-        }
-
-        @JavascriptInterface
-        fun stopBackgroundVideo() {
-            runOnUiThread {
-                webView.setBackgroundColor(Color.BLACK)
-                player?.stop()
-                player?.clearMediaItems()
-            }
-        }
-
-        @JavascriptInterface
-        fun cacheCurrentFrame(streamUrl: String) {
-            runOnUiThread {
+        function initApp() {
+            removeNativeSplash();
+            var localConfigStr = localStorage.getItem('feelcool_config');
+            if (localConfigStr) {
                 try {
-                    val bitmap = textureView.bitmap ?: return@runOnUiThread
-                    val scaled = Bitmap.createScaledBitmap(bitmap, 640, 360, true)
-                    val file = File(cacheDir, "frame_${streamUrl.hashCode()}.jpg")
-                    val out = FileOutputStream(file)
-                    scaled.compress(Bitmap.CompressFormat.JPEG, 75, out)
-                    out.flush()
-                    out.close()
-                    
-                    val path = "file://${file.absolutePath}"
-                    webView.evaluateJavascript("javascript:if(window.onFrameCached) window.onFrameCached('$streamUrl', '$path');", null)
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                    var parsed = JSON.parse(localConfigStr);
+                    if (parsed.user) globalConfig.user = parsed.user;
+                    if (parsed.api) globalConfig.api = parsed.api;
+                    if (parsed.rows) ROW_DATA = parsed.rows;
+                    applyUserConfig();
+                } catch(e) {}
+            }
+            
+            // 并发渲染第一优先：不要傻等网络返回才绘制画面
+            fetchTrendingShow();
+
+            if (typeof fetch === 'function') {
+                // 设置 3 秒网络超时墙，阻断 GitHub 极度卡顿导致的界面假死
+                var controller = null;
+                var timeoutId = null;
+                var fetchOptions = {};
+                
+                if (window.AbortController) {
+                    controller = new AbortController();
+                    fetchOptions.signal = controller.signal;
+                    timeoutId = setTimeout(function() { controller.abort(); }, 3000);
                 }
+
+                fetch(CONFIG_URL, fetchOptions)
+                    .then(function(response) { 
+                        if (timeoutId) clearTimeout(timeoutId);
+                        return response.ok ? response.json() : Promise.reject(); 
+                    })
+                    .then(function(data) {
+                        var newDataStr = JSON.stringify(data);
+                        if (newDataStr !== localConfigStr) {
+                            localStorage.setItem('feelcool_config', newDataStr);
+                            if (data.user) globalConfig.user = data.user;
+                            if (data.api) globalConfig.api = data.api;
+                            if (data.rows) ROW_DATA = data.rows;
+                            applyUserConfig();
+                        }
+                        if (currentTrackRow > 0) {
+                            var tempRow = currentTrackRow;
+                            currentTrackRow = -1; 
+                            renderTrack(tempRow);
+                        }
+                    })
+                    .catch(function(e) { console.log("Config Network failed, using pure local cache."); });
+            }
+
+            var initial = document.querySelector('.focusable[data-row="1"][data-col="0"]');
+            if(initial) {
+                setTimeout(function() { setFocus(initial); }, 100);
+                setTimeout(function() { document.body.classList.remove('preload'); }, 250);
             }
         }
-    }
-}
+
+        function applyTMDBHero(show) {
+            trendingData.title = show.title;
+            trendingData.sub = show.sub;
+            
+            var rawUrl = show.bg; 
+            var mirrors = [
+                'https://wsrv.nl/?url=' + encodeURIComponent('image.tmdb.org/t/p/original' + rawUrl),
+                'https://tmdb.yuuko.cn/t/p/original' + rawUrl,
+                'https://images.weserv.nl/?url=' + encodeURIComponent('image.tmdb.org/t/p/original' + rawUrl)
+            ];
+            
+            var attempt = 0;
+            var testImg = new Image();
+            testImg.decoding = "async"; 
+            testImg.onload = function() {
+                trendingData.bg = mirrors[attempt];
+                if (currentFocusEl && currentFocusEl.getAttribute('data-api-bind') === 'tmdb') {
+                    var svgHTML = document.querySelector('.focusable[data-row="1"][data-col="0"] svg').outerHTML;
+                    updateHeroUI(trendingData.bg, trendingData.title, trendingData.sub, '很酷 TV+', svgHTML);
+                }
+            };
+            testImg.onerror = function() {
+                attempt++;
+                if(attempt < mirrors.length) testImg.src = mirrors[attempt];
+            };
+            testImg.src = mirrors[attempt];
+        }
+
+        function fetchTrendingShow() {
+            // 修复2：如果老电视内核太旧压根没 fetch，立刻退出防崩溃，确保下方的初始化逻辑顺利运行
+            if (typeof fetch !== 'function') return;
+
+            var apiKey = globalConfig.api.tmdb_api_key || 'f7762624a95e4c3823500736d40162cd';
+            var cachedTMDB = [];
+            try { cachedTMDB = JSON.parse(localStorage.getItem('tmdb_cache') || '[]'); } catch(e) {}
+            
+            if (cachedTMDB.length > 0) {
+                var randomIndex = Math.floor(Math.random() * cachedTMDB.length);
+                applyTMDBHero(cachedTMDB.splice(randomIndex, 1)[0]);
+                localStorage.setItem('tmdb_cache', JSON.stringify(cachedTMDB)); 
+            }
+
+            fetch('https://api.themoviedb.org/3/trending/tv/day?language=zh-CN&api_key=' + apiKey)
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data && data.results && data.results.length > 0) {
+                        var freshList = data.results.slice(0, 5).map(function(item) {
+                            return {
+                                bg: item.backdrop_path,
+                                title: item.name || item.original_name,
+                                sub: 'TMDB 时下流行 · ' + (item.vote_average ? item.vote_average.toFixed(1) : '暂无') + '分'
+                            };
+                        });
+                        if (cachedTMDB.length === 0) applyTMDBHero(freshList[0]);
+                        localStorage.setItem('tmdb_cache', JSON.stringify(freshList.slice(1, 4))); 
+                    }
+                }).catch(function(e) {});
+        }
+
+        function updateHeroUI(bg, title, sub, brandName, svgIconHTML) {
+            document.getElementById('heroTitle').innerText = title;
+            document.getElementById('heroSub').innerText = sub;
+            
+            var brandEl = document.getElementById('heroBrand');
+            if (svgIconHTML) {
+                brandEl.innerHTML = svgIconHTML + '<span id="heroBrandText">' + brandName + '</span>';
+            } else {
+                document.getElementById('heroBrandText').innerText = brandName;
+            }
+            document.getElementById('heroSub').style.color = (sub.indexOf('TMDB') !== -1) ? '#00d474' : 'rgba(255,255,255,0.6)';
+
+            if(bg) {
+                var loader = new Image();
+                loader.onload = function() {
+                    var curTitle = document.getElementById('heroTitle').innerText;
+                    if (curTitle === title) {
+                        document.getElementById('heroBg').style.backgroundImage = "url('" + bg + "')";
+                    }
+                };
+                loader.src = bg;
+            } else {
+                document.getElementById('heroBg').style.backgroundImage = "none";
+            }
+        }
+
+        function updateClock() {
+            var now = new Date();
+            var hours = now.getHours();
+            var minutes = now.getMinutes();
+            document.getElementById('sidebarClock').innerText = (hours < 10 ? '0' + hours : hours) + ':' + (minutes < 10 ? '0' + minutes : minutes);
+        }
+        setInterval(updateClock, 1000); updateClock();
+
+        function setFocus(targetEl) {
+            if (!targetEl) return;
+            
+            if (currentFocusEl) currentFocusEl.classList.remove('focused');
+            currentFocusEl = targetEl;
+            targetEl.focus();
+            targetEl.classList.add('focused');
+
+            var row = parseInt(targetEl.getAttribute('data-row'));
+            var col = parseInt(targetEl.getAttribute('data-col'));
+
+            if (col === 0 && row >= 1 && row <= 3) renderTrack(row);
+            else if (col === 0 && (row === 0 || row >= 4 || row === -1)) renderTrack(-1);
+
+            var sidebar = document.getElementById('sidebar');
+            var mainContent = document.getElementById('mainContent');
+            
+            if (col >= 1) {
+                sidebar.classList.add('collapsed');
+                mainContent.classList.add('expanded');
+            } else if (col === 0 || row === -1) {
+                sidebar.classList.remove('collapsed');
+                mainContent.classList.remove('expanded');
+            }
+
+            var activeRow = document.querySelector('.active-row');
+            if (activeRow) activeRow.classList.remove('active-row');
+            if (col > 0) {
+                var sidebarItem = document.querySelector('.focusable[data-row="' + row + '"][data-col="0"]');
+                if (sidebarItem) sidebarItem.classList.add('active-row');
+            }
+
+            var noBgChange = targetEl.getAttribute('data-no-bg-change') === 'true';
+            var isTMDB = targetEl.getAttribute('data-api-bind') === 'tmdb';
+            var sectionName = targetEl.getAttribute('data-section-name') || '很酷 TV+';
+            var targetAction = targetEl.getAttribute('data-action');
+            
+            var isNavCableTV = (col === 0 && sectionName === '有线电视');
+            if (isNavCableTV) {
+                var firstCard = document.querySelector('.focusable[data-row="' + row + '"][data-col="1"]');
+                if (firstCard) targetAction = firstCard.getAttribute('data-action');
+            }
+
+            var targetStreamUrl = (targetAction && targetAction.startsWith('iptv:')) ? targetAction.substring(5) : null;
+
+            if (targetStreamUrl !== currentPlayingStream) {
+                clearTimeout(bgPreviewTimeout);
+                currentPlayingStream = targetStreamUrl;
+                if (window.FeelCoolTV && window.FeelCoolTV.stopBackgroundVideo) window.FeelCoolTV.stopBackgroundVideo();
+                
+                document.getElementById('heroBg').style.opacity = '1';
+                document.getElementById('baseLayer').style.opacity = '1';
+
+                if (targetStreamUrl) {
+                    bgPreviewTimeout = setTimeout(function() {
+                        if (window.FeelCoolTV && window.FeelCoolTV.playBackgroundVideo) window.FeelCoolTV.playBackgroundVideo(targetStreamUrl);
+                    }, 1000);
+                }
+            }
+
+            var svgIconHTML = '';
+            if (col === 0 || row === -1) {
+                var svgEl = targetEl.querySelector('svg');
+                if (svgEl) svgIconHTML = svgEl.outerHTML;
+            } else {
+                var activeSidebar = document.querySelector('.nav-item.active-row');
+                if (activeSidebar) {
+                    var activeSvg = activeSidebar.querySelector('svg');
+                    if (activeSvg) svgIconHTML = activeSvg.outerHTML;
+                }
+            }
+
+            if (!noBgChange) {
+                if (isTMDB) {
+                    updateHeroUI(trendingData.bg, trendingData.title, trendingData.sub, sectionName, svgIconHTML);
+                } else {
+                    var bg = targetEl.getAttribute('data-bg');
+                    var title = targetEl.getAttribute('data-title');
+                    var sub = targetEl.getAttribute('data-sub');
+                    
+                    if (isNavCableTV && targetStreamUrl) {
+                        bg = iptvFrameCache[targetStreamUrl] || '';
+                    }
+                    updateHeroUI(bg, title, sub, sectionName, svgIconHTML);
+                }
+            }
+
+            if (col > 0 && row > 0 && row < 7) {
+                var track = document.getElementById('mainTrack');
+                var offset = col > 1 ? (col - 1) * 240 : 0;
+                if (track) track.style.transform = 'translate3d(-' + offset + 'px, 0, 0)';
+            }
+        }
+
+        window.handleHardwareBack = function() {
+            if (currentFocusEl) {
+                var col = parseInt(currentFocusEl.getAttribute('data-col'));
+                if (col > 0) {
+                    var row = parseInt(currentFocusEl.getAttribute('data-row'));
+                    setFocus(document.querySelector('.focusable[data-row="' + row + '"][data-col="0"]'));
+                    return "true";
+                }
+            }
+            return "false"; 
+        };
+
+        function findTargetFocusable(r, c) { return document.querySelector('.focusable[data-row="' + r + '"][data-col="' + c + '"]'); }
+
+        var lastKeyTime = 0;
+        document.addEventListener('keydown', function(e) {
+            var now = Date.now();
+            if (now - lastKeyTime < 130) { e.preventDefault(); return; }
+            lastKeyTime = now;
+
+            if (!currentFocusEl) return;
+            var row = parseInt(currentFocusEl.getAttribute('data-row'));
+            var col = parseInt(currentFocusEl.getAttribute('data-col'));
+            var nextEl = null;
+
+            switch(e.key) {
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (col === 0) nextEl = findTargetFocusable(row + 1, 0) || currentFocusEl;
+                    else nextEl = findTargetFocusable(row, 0) || currentFocusEl;
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (col === 0) {
+                        if (row === 1) nextEl = findTargetFocusable(-1, 0) || currentFocusEl;
+                        else if (row === 4) nextEl = findTargetFocusable(3, 0) || currentFocusEl;
+                        else nextEl = findTargetFocusable(row - 1, 0) || currentFocusEl;
+                    } else {
+                        nextEl = findTargetFocusable(row, 0) || currentFocusEl;
+                    }
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    if (col === 0) {
+                        nextEl = (row === -1) ? findTargetFocusable(1, 1) : findTargetFocusable(row, 1);
+                        if (!nextEl) nextEl = currentFocusEl;
+                    } else {
+                        nextEl = findTargetFocusable(row, col + 1) || currentFocusEl;
+                    }
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    if (col > 1) nextEl = findTargetFocusable(row, col - 1) || currentFocusEl;
+                    else if (col === 1) nextEl = findTargetFocusable(row, 0) || currentFocusEl; 
+                    break;
+                case 'Enter':
+                    e.preventDefault();
+                    var action = currentFocusEl.getAttribute('data-action');
+                    if (action) {
+                        if (!action.startsWith('iptv:')) {
+                            clearTimeout(bgPreviewTimeout);
+                            currentPlayingStream = null;
+                            document.getElementById('heroBg').style.opacity = '1';
+                            document.getElementById('baseLayer').style.opacity = '1';
+                        }
+                        if (window.FeelCoolTV && window.FeelCoolTV.executeAction) {
+                            window.FeelCoolTV.executeAction(action, document.getElementById('heroTitle').innerText);
+                        }
+                    } else if (col === 0 && row >= 0) {
+                        var firstCard = findTargetFocusable(row, 1);
+                        if (firstCard) nextEl = firstCard;
+                    }
+                    break;
+            }
+            
+            // 修复3：通过硬件帧同步，消灭按键移动时的撕裂和卡顿掉帧
+            if (nextEl && nextEl !== currentFocusEl) {
+                raf(function() {
+                    setFocus(nextEl);
+                });
+            }
+        });
+
+        initApp();
+    </script>
+</body>
+</html>
