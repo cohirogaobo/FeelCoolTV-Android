@@ -49,7 +49,6 @@
             z-index: 1; transition: background 0.5s ease;
         }
 
-        /* 侧边栏加宽到 205px，容纳 170px 按钮更加从容不裁切 */
         .sidebar {
             position: fixed; left: 20px; top: 20px; bottom: 20px; width: 205px;
             background: var(--glass-bg); backdrop-filter: blur(35px); -webkit-backdrop-filter: blur(35px);
@@ -57,6 +56,9 @@
             display: flex; flex-direction: column; padding: 18px 12px; box-sizing: border-box;
             transition: width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), padding var(--animation-speed) ease;
             overflow: hidden; 
+            /* 🔥 终极圆角修复：恢复原生 WebKit 遮罩以裁切高斯模糊溢出的直角，但严格禁用 translateZ 防止背景卡死 */
+            -webkit-mask-image: -webkit-radial-gradient(white, black);
+            background-clip: padding-box;
         }
         
         .sidebar.collapsed { width: 68px; padding: 18px 0; }
@@ -129,7 +131,6 @@
         .sidebar.collapsed .nav-divider { margin: 12px 10px; }
         .nav-section-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 0 10px 8px 10px; flex-shrink: 0; }
 
-        /* 主内容区域跟随侧边栏往右推，避免重叠 */
         .main-content { 
             position: absolute; top: 0; bottom: 0; z-index: 2; left: 225px; width: calc(100% - 225px); 
             display: flex; flex-direction: column; justify-content: flex-end; padding: 40px 45px; box-sizing: border-box; 
@@ -359,7 +360,6 @@
         function fetchTrendingShow() {
             var apiKey = globalConfig.api.tmdb_api_key || 'f7762624a95e4c3823500736d40162cd';
             
-            // 🔥 直接光明正大请求原域名！底层安卓会自动帮我们走干净的 IP 通道
             var tmdbApi = 'https://api.themoviedb.org/3/trending/tv/day?language=zh-CN&api_key=' + apiKey;
 
             fetch(tmdbApi)
@@ -369,7 +369,6 @@
                         var randomIndex = Math.floor(Math.random() * Math.min(10, data.results.length));
                         var show = data.results[randomIndex];
                         
-                        // 🔥 同样，图片也光明正大请求原域名！
                         trendingData.bg = 'https://image.tmdb.org/t/p/original' + show.backdrop_path; 
                         trendingData.title = show.name || show.original_name;
                         
