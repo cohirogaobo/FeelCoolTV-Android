@@ -20,33 +20,40 @@
             animation: none !important;
         }
 
+        /* 彻底透明化，给底层 ExoPlayer 留出视野 */
         html, body {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            background-color: transparent; color: #fff;
+            background-color: transparent !important; color: #fff;
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
             overflow: hidden !important; user-select: none;
             position: fixed; 
             -webkit-font-smoothing: antialiased; 
-            -moz-osx-font-smoothing: grayscale;
             text-rendering: optimizeLegibility;
         }
 
         * { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
-        .base-layer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #050505; z-index: -2; }
+        
+        /* 独立纯黑背景底板，当视频播放时使其淡出 */
+        .base-layer { 
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
+            background-color: #050505; z-index: -3; 
+            transition: opacity 0.5s ease; opacity: 1;
+        }
         
         .hero-background {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0;
             background-size: cover; background-position: center;
-            z-index: -1; transition: background-image 0.5s ease, opacity 0.5s ease;
-            will-change: background-image;
+            z-index: -2; transition: opacity 0.5s ease;
+            will-change: opacity;
             background-image: url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564');
         }
 
+        /* 保留阴影遮罩让字体看得清，即使视频在播放时也不隐藏 */
         .hero-overlay {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0;
             background: linear-gradient(to right, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 60%, transparent 100%),
                         linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.05) 40%, transparent 100%);
-            z-index: 1; transition: background 0.5s ease;
+            z-index: -1; transition: background 0.5s ease;
         }
 
         .sidebar {
@@ -106,7 +113,7 @@
             padding: 0 12px; margin: 0 auto; box-sizing: border-box; 
             border-radius: 12px; flex-shrink: 0;
             font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.65); white-space: nowrap;
-            cursor: pointer; outline: none; transform: translateZ(0); 
+            cursor: pointer; outline: none; 
             transition: width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), 
                         padding var(--animation-speed) ease,
                         background-color 0.25s ease, color 0.25s ease, transform 0.25s ease; 
@@ -130,12 +137,15 @@
         .sidebar.collapsed .nav-divider { margin: 12px 10px; }
         .nav-section-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 0 10px 8px 10px; flex-shrink: 0; }
 
+        /* 🔥 GPU加速优化：改用 transform: translateX 代替 left 动画，帧数在低端小米电视上直接拉满！ */
         .main-content { 
-            position: absolute; top: 0; bottom: 0; z-index: 2; left: 225px; width: calc(100% - 225px); 
+            position: absolute; top: 0; bottom: 0; z-index: 2; left: 88px; width: calc(100% - 88px); 
             display: flex; flex-direction: column; justify-content: flex-end; padding: 40px 45px; box-sizing: border-box; 
-            transition: left var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1), width var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1);
+            transform: translateX(137px); /* 225 - 88 = 137 */
+            transition: transform var(--animation-speed) cubic-bezier(0.25, 1, 0.5, 1);
+            will-change: transform;
         }
-        .main-content.expanded { left: 88px; width: calc(100% - 88px); }
+        .main-content.expanded { transform: translateX(0); }
 
         .hero-text { margin-bottom: 25px; transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease; display: flex; flex-direction: column; justify-content: flex-end; }
         .hero-text.lowered { transform: translateY(205px); }
@@ -157,18 +167,18 @@
         .carousel-track { 
             display: flex; gap: 20px; padding: 5px 0; z-index: 5;
             width: max-content; 
-            -webkit-transform: translateZ(0); transform: translateZ(0);
+            transform: translateZ(0); 
             transition: transform 0.35s cubic-bezier(0.25, 1, 0.5, 1); 
             will-change: transform;
         }
 
-        .media-item { display: flex; flex-direction: column; gap: 8px; width: 220px; flex-shrink: 0; outline: none; }
+        .media-item { display: flex; flex-direction: column; gap: 8px; width: 220px; flex-shrink: 0; outline: none; will-change: transform; }
         
         .card-image-wrapper { 
             width: 100%; height: 124px; border-radius: 12px; background-color: rgba(255,255,255,0.05); 
             border: 2px solid transparent; position: relative; overflow: hidden; 
             transition: transform 0.25s ease, border-color 0.25s ease;
-            -webkit-mask-image: -webkit-radial-gradient(white, black); transform: translateZ(0);
+            -webkit-mask-image: -webkit-radial-gradient(white, black);
         }
         .card-image-wrapper img { width: 100%; height: 100%; object-fit: cover; }
         .card-info { opacity: 0.6; transition: opacity 0.25s ease, transform 0.25s ease; transform: translateY(-2px); }
@@ -192,7 +202,7 @@
     </style>
 </head>
 <body class="preload">
-    <div class="base-layer"></div>
+    <div class="base-layer" id="baseLayer"></div>
     <div class="hero-background" id="heroBg"></div>
     <div class="hero-overlay" id="heroOverlay"></div>
 
@@ -261,6 +271,8 @@
         var currentFocusEl = null; 
         var toastTimeout;
         var currentTrackRow = -1;
+        var bgPreviewTimeout = null;
+        var splashRemoved = false;
         
         var trendingData = {
             bg: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564',
@@ -279,6 +291,8 @@
         };
 
         function removeNativeSplash() {
+            if(splashRemoved) return;
+            splashRemoved = true;
             setTimeout(function() {
                 try {
                     if (window.FeelCoolTV && window.FeelCoolTV.hideSplash) {
@@ -287,6 +301,12 @@
                 } catch(e) {}
             }, 100); 
         }
+
+        // 供底层视频播放器回调：当第一帧画面渲染出来时，透明化顶层黑幕
+        window.onBackgroundVideoStarted = function() {
+            document.getElementById('heroBg').style.opacity = '0';
+            document.getElementById('baseLayer').style.opacity = '0';
+        };
 
         function renderTrack(rowId) {
             if (currentTrackRow === rowId) return; 
@@ -322,7 +342,20 @@
         }
 
         function initApp() {
-            removeNativeSplash();
+            // 🔥 强行保证开屏画面驻留 2.8 秒，等待所有缓存加载完成，彻底告别开机残影
+            setTimeout(removeNativeSplash, 2800);
+            
+            // 全局 Config.json 配置也加入了 localStorage 缓存对比
+            var localConfigStr = localStorage.getItem('feelcool_config');
+            if (localConfigStr) {
+                try {
+                    var parsed = JSON.parse(localConfigStr);
+                    if (parsed.user) globalConfig.user = parsed.user;
+                    if (parsed.api) globalConfig.api = parsed.api;
+                    if (parsed.rows) ROW_DATA = parsed.rows;
+                    applyUserConfig();
+                } catch(e) {}
+            }
             
             if (typeof fetch === 'function') {
                 fetch(CONFIG_URL)
@@ -331,11 +364,14 @@
                         throw new Error("Config error");
                     })
                     .then(function(data) {
-                        if (data.user) globalConfig.user = data.user;
-                        if (data.api) globalConfig.api = data.api;
-                        if (data.rows) ROW_DATA = data.rows;
-                        
-                        applyUserConfig();
+                        var newDataStr = JSON.stringify(data);
+                        if (newDataStr !== localConfigStr) {
+                            localStorage.setItem('feelcool_config', newDataStr);
+                            if (data.user) globalConfig.user = data.user;
+                            if (data.api) globalConfig.api = data.api;
+                            if (data.rows) ROW_DATA = data.rows;
+                            applyUserConfig();
+                        }
                         
                         if (currentTrackRow > 0) {
                             var tempRow = currentTrackRow;
@@ -346,6 +382,7 @@
                     })
                     .catch(function(error) { 
                         applyUserConfig();
+                        fetchTrendingShow();
                     });
             }
 
@@ -356,58 +393,78 @@
             }
         }
 
+        function applyTMDBHero(show) {
+            trendingData.title = show.title;
+            trendingData.sub = show.sub;
+            
+            if (currentFocusEl && currentFocusEl.getAttribute('data-api-bind') === 'tmdb') {
+                var svgHTML = document.querySelector('.focusable[data-row="1"][data-col="0"] svg').outerHTML;
+                updateHeroUI(null, trendingData.title, trendingData.sub, '很酷 TV+', svgHTML);
+            }
+            
+            // TMDB 图像容灾矩阵：在多个公益 CDN 中自动测速寻找可用节点
+            var rawUrl = show.bg.replace('https://image.tmdb.org/t/p/original', '');
+            var mirrors = [
+                'https://wsrv.nl/?url=' + encodeURIComponent('image.tmdb.org/t/p/original' + rawUrl),
+                show.bg, 
+                'https://images.weserv.nl/?url=' + encodeURIComponent('image.tmdb.org/t/p/original' + rawUrl),
+                'https://tmdb-image-prod.b-cdn.net/t/p/original' + rawUrl,
+                'https://tmdb.yuuko.cn/t/p/original' + rawUrl
+            ];
+            
+            var attempt = 0;
+            var testImg = new Image();
+            testImg.onload = function() {
+                trendingData.bg = mirrors[attempt];
+                if (currentFocusEl && currentFocusEl.getAttribute('data-api-bind') === 'tmdb') {
+                    var svgHTML = document.querySelector('.focusable[data-row="1"][data-col="0"] svg').outerHTML;
+                    updateHeroUI(trendingData.bg, trendingData.title, trendingData.sub, '很酷 TV+', svgHTML);
+                }
+            };
+            testImg.onerror = function() {
+                attempt++;
+                if(attempt < mirrors.length) testImg.src = mirrors[attempt];
+            };
+            testImg.src = mirrors[attempt];
+        }
+
         function fetchTrendingShow() {
             var apiKey = globalConfig.api.tmdb_api_key || 'f7762624a95e4c3823500736d40162cd';
-            var tmdbApi = 'https://api.themoviedb.org/3/trending/tv/day?language=zh-CN&api_key=' + apiKey;
+            
+            // 🔥 TMDB 缓存黑科技：本地预留 3 个数据，开机瞬间展示，丝滑极致
+            var cachedTMDB = [];
+            try {
+                cachedTMDB = JSON.parse(localStorage.getItem('tmdb_cache') || '[]');
+            } catch(e) {}
+            
+            if (cachedTMDB.length > 0) {
+                var randomIndex = Math.floor(Math.random() * cachedTMDB.length);
+                var show = cachedTMDB.splice(randomIndex, 1)[0]; // 抽走一个用掉
+                applyTMDBHero(show);
+                localStorage.setItem('tmdb_cache', JSON.stringify(cachedTMDB)); // 存回剩下未使用的
+            }
 
+            // 静默在后台重新去 TMDB 进货，塞满缓存池
+            var tmdbApi = 'https://api.themoviedb.org/3/trending/tv/day?language=zh-CN&api_key=' + apiKey;
             fetch(tmdbApi)
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     if (data && data.results && data.results.length > 0) {
-                        var randomIndex = Math.floor(Math.random() * Math.min(10, data.results.length));
-                        var show = data.results[randomIndex];
-                        var posterPath = show.backdrop_path;
+                        var freshList = data.results.slice(0, 5).map(function(item) {
+                            var rating = item.vote_average ? item.vote_average.toFixed(1) : '暂无';
+                            return {
+                                bg: 'https://image.tmdb.org/t/p/original' + item.backdrop_path,
+                                title: item.name || item.original_name,
+                                sub: 'TMDB 时下流行 · ' + rating + '分'
+                            };
+                        });
                         
-                        // 先立刻更新标题文字，保证用户体验不割裂
-                        trendingData.title = show.name || show.original_name;
-                        var rating = show.vote_average ? show.vote_average.toFixed(1) : '暂无';
-                        trendingData.sub = 'TMDB 时下流行 · ' + rating + '分';
-                        
-                        if (currentFocusEl && currentFocusEl.getAttribute('data-api-bind') === 'tmdb') {
-                            var svgHTML = document.querySelector('.focusable[data-row="1"][data-col="0"] svg').outerHTML;
-                            updateHeroUI(trendingData.bg, trendingData.title, trendingData.sub, '很酷 TV+', svgHTML);
+                        // 如果刚才开机时本地没有缓存(首次运行)，立刻补发一次渲染
+                        if (cachedTMDB.length === 0) {
+                            applyTMDBHero(freshList[0]);
                         }
                         
-                        // 🔥 终极防屏蔽机制：准备多条公益镜像路线，JavaScript 会逐一尝试，哪条通就用哪条！
-                        var mirrors = [
-                            'https://wsrv.nl/?url=' + encodeURIComponent('image.tmdb.org/t/p/original' + posterPath),
-                            'https://image.tmdb.org/t/p/original' + posterPath, 
-                            'https://images.weserv.nl/?url=' + encodeURIComponent('image.tmdb.org/t/p/original' + posterPath),
-                            'https://tmdb-image-prod.b-cdn.net/t/p/original' + posterPath
-                        ];
-                        
-                        var attempt = 0;
-                        var testImg = new Image();
-                        
-                        // 只要有一条路线加载成功，立刻将背景替换
-                        testImg.onload = function() {
-                            trendingData.bg = mirrors[attempt];
-                            if (currentFocusEl && currentFocusEl.getAttribute('data-api-bind') === 'tmdb') {
-                                var svgHTML = document.querySelector('.focusable[data-row="1"][data-col="0"] svg').outerHTML;
-                                updateHeroUI(trendingData.bg, trendingData.title, trendingData.sub, '很酷 TV+', svgHTML);
-                            }
-                        };
-                        
-                        // 若被 ISP 阻断导致 onerror，无缝切换下一个节点测试
-                        testImg.onerror = function() {
-                            attempt++;
-                            if(attempt < mirrors.length) {
-                                testImg.src = mirrors[attempt];
-                            }
-                        };
-                        
-                        // 启动链路测速加载
-                        testImg.src = mirrors[attempt];
+                        localStorage.setItem('tmdb_cache', JSON.stringify(freshList.slice(1, 4))); // 偷偷屯 3 个备用
                     }
                 })
                 .catch(function(e) { console.error("TMDB Fetch Error", e); });
@@ -449,6 +506,7 @@
             var row = parseInt(targetEl.getAttribute('data-row'));
             var col = parseInt(targetEl.getAttribute('data-col'));
 
+            // 处理左右联动
             if (col === 0 && row >= 1 && row <= 3) {
                 renderTrack(row);
             } else if (col === 0 && (row === 0 || row >= 4 || row === -1)) {
@@ -472,9 +530,18 @@
                 if (sidebarItem) sidebarItem.classList.add('active-row');
             }
 
+            // 🔥 停止底层的视频预览，并恢复黑板和海报
+            clearTimeout(bgPreviewTimeout);
+            if (window.FeelCoolTV && window.FeelCoolTV.stopBackgroundVideo) {
+                window.FeelCoolTV.stopBackgroundVideo();
+            }
+            document.getElementById('heroBg').style.opacity = '1';
+            document.getElementById('baseLayer').style.opacity = '1';
+
             var noBgChange = targetEl.getAttribute('data-no-bg-change') === 'true';
             var isTMDB = targetEl.getAttribute('data-api-bind') === 'tmdb';
             var sectionName = targetEl.getAttribute('data-section-name') || '很酷 TV+';
+            var actionStr = targetEl.getAttribute('data-action');
 
             var svgIconHTML = '';
             if (col === 0 || row === -1) {
@@ -497,6 +564,16 @@
                     var sub = targetEl.getAttribute('data-sub');
                     if (bg && title) updateHeroUI(bg, title, sub, sectionName, svgIconHTML);
                 }
+            }
+
+            // 🔥 触发 IPTV 沉浸式动态背景预览倒计时 (1秒)
+            if (actionStr && actionStr.startsWith('iptv:')) {
+                var streamUrl = actionStr.substring(5);
+                bgPreviewTimeout = setTimeout(function() {
+                    if (window.FeelCoolTV && window.FeelCoolTV.playBackgroundVideo) {
+                        window.FeelCoolTV.playBackgroundVideo(streamUrl);
+                    }
+                }, 1000);
             }
 
             if (col > 0 && row > 0 && row < 7) {
