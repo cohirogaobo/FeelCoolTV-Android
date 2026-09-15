@@ -206,6 +206,9 @@ class MainActivity : AppCompatActivity() {
     inner class JSBridge {
         @JavascriptInterface
         fun executeAction(action: String, title: String) {
+            // 👇 核心修复：无论是打开 IPTV 还是第三方应用，跳转前必须先释放背景播放器，交出硬件解码器！
+            stopBackgroundVideo()
+
             if (action.startsWith("iptv:")) {
                 val url = action.substring(5)
                 val intent = Intent(this@MainActivity, ExoPlayerActivity::class.java)
@@ -282,7 +285,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun stopBackgroundVideo() {
             runOnUiThread {
-                // 停止视频时立即恢复黑色背景，关闭透明图层混合
+                // 停止视频时立即恢复黑色背景，关闭透明图层混合，释放解码器
                 webView.setBackgroundColor(Color.BLACK)
                 player?.stop()
                 player?.clearMediaItems()
