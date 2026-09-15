@@ -6,11 +6,18 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
+import okhttp3.Dns
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.net.InetAddress
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
     private lateinit var splashView: ImageView
@@ -18,6 +25,26 @@ class MainActivity : AppCompatActivity() {
     
     private var backPressCount = 0
     private var lastBackPressTime = 0L
+
+    // 🔥 黑科技：创建一个内置 TMDB 真实无污染 IP 的自定义 DNS 客户端
+    private val okHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .dns(object : Dns {
+                override fun lookup(hostname: String): List<InetAddress> {
+                    // 强行将 TMDB 域名指向其官方海外未被污染的 ASN IP 节点
+                    if (hostname == "api.themoviedb.org" || hostname == "image.tmdb.org") {
+                        return listOf(
+                            InetAddress.getByName("143.244.50.212"),
+                            InetAddress.getByName("169.150.247.38")
+                        )
+                    }
+                    return Dns.SYSTEM.lookup(hostname)
+                }
+            })
+            .build()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,7 +66,52 @@ class MainActivity : AppCompatActivity() {
         webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
-        webView.webViewClient = WebViewClient()
+        
+        // 🔥 核心拦截逻辑
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                val url = request?.url.toString()
+                
+                // 只要是 TMDB 的请求，全部劫持交给 OkHttp 处理
+                if (url.contains("themoviedb.org") || url.contains("tmdb.org")) {
+                    try {
+                        val reqBuilder = Request.Builder().url(url)
+                        // 伪装浏览器请求头
+                        request?.requestHeaders?.forEach { (key, value) ->
+                            reqBuilder.addHeader(key, value)
+                        }
+                        reqBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                        
+                        val response = okHttpClient.newCall(reqBuilder.build()).execute()
+                        val inputStream = response.body?.byteStream()
+                        
+                        // 推断文件类型
+                        var mimeType = "application/json"
+                        if (url.endsWith(".jpg") || url.endsWith(".jpeg") || url.contains("/t/p/")) mimeType = "image/jpeg"
+                        if (url.endsWith(".png")) mimeType = "image/png"
+
+                        // 注入跨域允许头，防止 WebView 的 Fetch API 报 CORS 错误
+                        val headers = mutableMapOf<String, String>()
+                        response.headers.forEach { headers[it.first] = it.second }
+                        headers["Access-Control-Allow-Origin"] = "*"
+                        headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+
+                        return WebResourceResponse(
+                            mimeType,
+                            "UTF-8",
+                            response.code,
+                            "OK",
+                            headers,
+                            inputStream
+                        )
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                return super.shouldInterceptRequest(view, request)
+            }
+        }
+        
         webView.addJavascriptInterface(JSBridge(), "FeelCoolTV")
         
         splashView = ImageView(this)
@@ -95,7 +167,6 @@ class MainActivity : AppCompatActivity() {
                     launchIntent = packageManager.getLaunchIntentForPackage(pkg)
                 }
                 
-                // 🔥 修复：针对小米系统隐藏应用的强制唤醒白名单
                 if (launchIntent == null) {
                     val targetActivity = when (pkg) {
                         "com.xiaomi.mitv.tvplayer" -> "com.xiaomi.mitv.tvplayer.MainActivity"
