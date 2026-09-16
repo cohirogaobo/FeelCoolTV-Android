@@ -49,8 +49,6 @@ class MainActivity : AppCompatActivity() {
     private var iptvExitCount = 0
     
     private var customToast: Toast? = null
-    
-    // 开屏图销毁状态锁，防止前端和原生层重复执行
     private var isSplashHidden = false
 
     private val antiSleepHandler = Handler(Looper.getMainLooper())
@@ -81,6 +79,7 @@ class MainActivity : AppCompatActivity() {
             .build()
     }
 
+    // 【优化点 4】调整提示条高度、文字间距并强制绝对居中
     private fun showPureNativeToast(message: String) {
         runOnUiThread {
             customToast?.cancel()
@@ -89,9 +88,13 @@ class MainActivity : AppCompatActivity() {
                 text = message
                 setTextColor(Color.WHITE)
                 textSize = 15f
-                setPadding(45, 20, 45, 20)
+                letterSpacing = 0.06f // 增加字间距，呼吸感更强
+                gravity = android.view.Gravity.CENTER // 强制上下左右居中
+                textAlignment = View.TEXT_ALIGNMENT_CENTER
+                // 缩窄上下 padding (left, top, right, bottom)，使高度降低
+                setPadding(50, 14, 50, 16) 
                 background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#B3000000")) 
+                    setColor(Color.parseColor("#D9000000")) 
                     cornerRadius = 50f
                 }
             }
@@ -102,7 +105,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 核心保护机制：强制销毁开屏图，释放内存
     private fun executeHideSplash() {
         if (isSplashHidden) return
         isSplashHidden = true
@@ -154,7 +156,6 @@ class MainActivity : AppCompatActivity() {
         webView.isFocusableInTouchMode = true
         
         webView.webViewClient = object : WebViewClient() {
-            // 终极安全网：网页加载完成后，原生层强制延迟销毁开屏图，无视前端JS死锁
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 Handler(Looper.getMainLooper()).postDelayed({
@@ -218,7 +219,7 @@ class MainActivity : AppCompatActivity() {
                 player?.volume = 0f    
                 backPressCount = 0 
             } else {
-                showPureNativeToast("再按 ${3 - iptvExitCount} 次退出全屏播放")
+                showPureNativeToast("再按 ${3 - iptvExitCount} 次退出全屏")
             }
             return
         }
@@ -231,7 +232,7 @@ class MainActivity : AppCompatActivity() {
                 if (currentTime - lastBackPressTime > 2000) {
                     backPressCount = 1
                     lastBackPressTime = currentTime
-                    showPureNativeToast("再按两次返回键退出很酷TV")
+                    showPureNativeToast("再按两次返回键退出")
                 } else {
                     backPressCount++
                     if (backPressCount >= 3) {
