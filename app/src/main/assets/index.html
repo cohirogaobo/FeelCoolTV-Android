@@ -119,7 +119,6 @@
         .main-title { font-size: 42px; font-weight: 800; margin: 0 0 6px 0; letter-spacing: -0.5px; line-height: 1.15; max-width: 75%; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .sub-title { font-size: 15px; color: rgba(255,255,255,0.6); max-width: 550px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 400; }
 
-        /* 【边缘渐隐完美修复】：负边距抵消 padding，并使用像素级遮罩，保证中心区域绝对 100% 不透明，杜绝视频下的幽灵感 */
         .carousel-container { 
             width: calc(100% + 90px); height: 240px; 
             margin-left: -45px; margin-right: -45px; margin-top: -20px; margin-bottom: -20px; 
@@ -207,7 +206,6 @@
 
         var CONFIG_URL = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/main/config.json"; 
         
-        // 【EPG 加强修正】双分支探测，并支持热重绘卡片轨道
         var EPG_DATA = {};
         var EPG_URL_MAIN = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/main/epg_lite.json";
         var EPG_URL_MASTER = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/master/epg_lite.json";
@@ -232,7 +230,6 @@
         function fetchEPG() {
             if (typeof fetch !== 'function') return;
             var ts = "?t=" + new Date().getTime();
-            // 先尝试 main 分支，如果失败则尝试 master 分支
             fetch(EPG_URL_MAIN + ts)
                 .then(function(res) { return res.ok ? res.json() : Promise.reject(); })
                 .catch(function() { return fetch(EPG_URL_MASTER + ts).then(function(res){ return res.ok ? res.json() : Promise.reject(); }); })
@@ -241,19 +238,16 @@
                     EPG_DATA = data;
                     
                     if (isChanged) {
-                        // 强制更新当前焦点右上角的副标题
                         if (currentFocusEl) {
                             var title = currentFocusEl.getAttribute('data-title');
                             if (title && EPG_DATA[title.trim()]) {
                                 document.getElementById('heroSub').innerText = EPG_DATA[title.trim()];
                             }
                         }
-                        // 强制刷新整个卡片轨道，将 EPG 数据写入到卡片自身的副标题里
                         if (currentTrackRow !== -1) {
                             var tempRow = currentTrackRow;
                             currentTrackRow = -1;
                             renderTrack(tempRow);
-                            // 恢复卡片的高亮状态
                             var currentCol = currentFocusEl ? parseInt(currentFocusEl.getAttribute('data-col')) : 0;
                             if (currentCol > 0) {
                                 var newFocus = document.querySelector('.focusable[data-row="' + tempRow + '"][data-col="' + currentCol + '"]');
@@ -312,13 +306,15 @@
                     var bgUrl = item.bg;
                     var subText = item.sub;
                     
-                    // 将 EPG 注入到卡片底部
                     if (item.title && EPG_DATA[item.title.trim()]) {
                         subText = EPG_DATA[item.title.trim()];
                     }
                     
-                    if (item.action && item.action.startsWith('iptv:')) {
-                        var sUrl = item.action.substring(5);
+                    // 无缝衔接：不论是 iptv 还是 sniff 都能正确识别和拉取缓存截图
+                    if (item.action && (item.action.startsWith('iptv:') || item.action.startsWith('sniff:'))) {
+                        var sUrl = item.action;
+                        if (item.action.startsWith('iptv:')) sUrl = item.action.substring(5);
+                        
                         if (iptvFrameCache[sUrl]) bgUrl = iptvFrameCache[sUrl];
                         else bgUrl = ''; 
                     }
@@ -399,7 +395,6 @@
                 setTimeout(function() { document.body.classList.remove('preload'); }, 250);
             }
 
-            // 初始化并定时更新 EPG
             fetchEPG();
             setInterval(fetchEPG, 30 * 60 * 1000);
         }
@@ -546,7 +541,11 @@
                 if (firstCard) targetAction = firstCard.getAttribute('data-action');
             }
 
-            var targetStreamUrl = (targetAction && targetAction.startsWith('iptv:')) ? targetAction.substring(5) : null;
+            var targetStreamUrl = null;
+            if (targetAction) {
+                if (targetAction.startsWith('iptv:')) targetStreamUrl = targetAction.substring(5);
+                else if (targetAction.startsWith('sniff:')) targetStreamUrl = targetAction; 
+            }
 
             if (targetStreamUrl !== currentPlayingStream) {
                 clearTimeout(bgPreviewTimeout);
@@ -665,7 +664,7 @@
                     e.preventDefault();
                     var action = currentFocusEl.getAttribute('data-action');
                     if (action) {
-                        if (!action.startsWith('iptv:')) {
+                        if (!action.startsWith('iptv:') && !action.startsWith('sniff:')) {
                             clearTimeout(bgPreviewTimeout);
                             currentPlayingStream = null;
                             document.getElementById('heroBg').style.opacity = '1';
