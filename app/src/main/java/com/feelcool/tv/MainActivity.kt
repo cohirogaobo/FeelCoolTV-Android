@@ -26,6 +26,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -50,6 +53,12 @@ class MainActivity : AppCompatActivity() {
     
     private var customToast: Toast? = null
     private var isSplashHidden = false
+
+    // 全局存储当前视频流需要的 Headers
+    private var currentVideoHeaders: Map<String, String> = emptyMap()
+
+    // 幽灵嗅探器
+    private var snifferWebView: WebView? = null
 
     private val antiSleepHandler = Handler(Looper.getMainLooper())
     private val antiSleepRunnable = object : Runnable {
@@ -79,7 +88,6 @@ class MainActivity : AppCompatActivity() {
             .build()
     }
 
-    // 【优化点 4】调整提示条高度、文字间距并强制绝对居中
     private fun showPureNativeToast(message: String) {
         runOnUiThread {
             customToast?.cancel()
@@ -88,10 +96,9 @@ class MainActivity : AppCompatActivity() {
                 text = message
                 setTextColor(Color.WHITE)
                 textSize = 15f
-                letterSpacing = 0.06f // 增加字间距，呼吸感更强
-                gravity = android.view.Gravity.CENTER // 强制上下左右居中
+                letterSpacing = 0.06f
+                gravity = android.view.Gravity.CENTER
                 textAlignment = View.TEXT_ALIGNMENT_CENTER
-                // 缩窄上下 padding (left, top, right, bottom)，使高度降低
                 setPadding(50, 14, 50, 16) 
                 background = GradientDrawable().apply {
                     setColor(Color.parseColor("#D9000000")) 
@@ -207,6 +214,7 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         antiSleepHandler.removeCallbacksAndMessages(null)
         player?.release()
+        snifferWebView?.destroy()
     }
 
     override fun onBackPressed() {
@@ -245,24 +253,131 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // --- 核心播放器构造器：注入 Headers ---
+    private fun setupPlayer() {
+        val dataSourceFactory = DataSource.Factory {
+            val httpDataSource = DefaultHttpDataSource.Factory()
+                .setConnectTimeoutMs(15000)
+                .setReadTimeoutMs(15000)
+                .setAllowCrossProtocolRedirects(true)
+                .createDataSource()
+            
+            // 动态注入刚才嗅探拿到的所有头信息
+            currentVideoHeaders.forEach { (key, value) ->
+                if (value.isNotEmpty()) {
+                    httpDataSource.setRequestProperty(key, value)
+                }
+            }
+            httpDataSource
+        }
+
+        player = ExoPlayer.Builder(this@MainActivity)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .build().apply {
+                setVideoTextureView(textureView)
+                addListener(object : Player.Listener {
+                    override fun onRenderedFirstFrame() {
+                        webView.setBackgroundColor(Color.TRANSPARENT)
+                        webView.evaluateJavascript("javascript:if(window.onBackgroundVideoStarted) window.onBackgroundVideoStarted();", null)
+                    }
+                })
+            }
+    }
+
+    private fun startExoPlayer(url: String, headers: Map<String, String>, targetVolume: Float) {
+        currentVideoHeaders = headers
+        if (player == null) setupPlayer()
+        player?.volume = targetVolume
+        player?.setMediaItem(MediaItem.fromUri(url))
+        player?.prepare()
+        player?.play()
+    }
+
+    // --- 核心突破：无头浏览器自动嗅探防盗链 ---
+    private fun sniffM3u8(targetUrl: String, onFound: (String, String, String, String) -> Unit) {
+        snifferWebView?.destroy()
+        
+        val sniffer = WebView(this)
+        snifferWebView = sniffer
+        
+        val pcUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        sniffer.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            userAgentString = pcUserAgent
+            mediaPlaybackRequiresUserGesture = false
+        }
+        
+        var isFound = false
+
+        // 设置 12 秒的防卡死熔断机制
+        val timeoutHandler = Handler(Looper.getMainLooper())
+        val timeoutRunnable = Runnable {
+            if (!isFound) {
+                isFound = true
+                showPureNativeToast("解析频道视频流超时")
+                sniffer.stopLoading()
+                sniffer.destroy()
+                snifferWebView = null
+            }
+        }
+        timeoutHandler.postDelayed(timeoutRunnable, 12000)
+        
+        sniffer.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                val url = request?.url.toString()
+                // 当发现有 .m3u8 结尾的请求，立即收网！
+                if (!isFound && url.contains(".m3u8")) {
+                    isFound = true
+                    timeoutHandler.removeCallbacks(timeoutRunnable)
+                    
+                    val cookieManager = android.webkit.CookieManager.getInstance()
+                    val cookie = cookieManager.getCookie(targetUrl) ?: ""
+                    val uri = android.net.Uri.parse(targetUrl)
+                    val referer = "${uri.scheme}://${uri.host}/" // 自动提取该网站的主域名作 Referer
+                    
+                    runOnUiThread {
+                        onFound(url, cookie, pcUserAgent, referer)
+                        // 事了拂衣去，销毁嗅探器
+                        sniffer.stopLoading()
+                        sniffer.destroy()
+                        snifferWebView = null
+                    }
+                }
+                return super.shouldInterceptRequest(view, request)
+            }
+        }
+        sniffer.loadUrl(targetUrl)
+    }
+
     inner class JSBridge {
         @JavascriptInterface
         fun executeAction(action: String, title: String) {
-            if (action.startsWith("iptv:")) {
-                val url = action.substring(5)
+            val isIptv = action.startsWith("iptv:")
+            val isSniff = action.startsWith("sniff:")
+
+            if (isIptv || isSniff) {
                 runOnUiThread {
                     isFullScreenIptv = true
                     iptvExitCount = 0
                     webView.visibility = View.GONE 
                     
-                    if (player?.currentMediaItem?.localConfiguration?.uri?.toString() == url && player?.isPlaying == true) {
-                        player?.volume = 1f
+                    if (isSniff) {
+                        val sniffUrl = action.substring(6)
+                        showPureNativeToast("正在解析底层直播源...")
+                        sniffM3u8(sniffUrl) { m3u8Url, cookie, userAgent, referer ->
+                            runOnUiThread {
+                                val headers = mapOf("User-Agent" to userAgent, "Referer" to referer, "Cookie" to cookie)
+                                startExoPlayer(m3u8Url, headers, 1f)
+                            }
+                        }
                     } else {
-                        if (player == null) setupPlayer()
-                        player?.volume = 1f
-                        player?.setMediaItem(MediaItem.fromUri(url))
-                        player?.prepare()
-                        player?.play()
+                        val url = action.substring(5)
+                        if (player?.currentMediaItem?.localConfiguration?.uri?.toString() == url && player?.isPlaying == true) {
+                            player?.volume = 1f
+                        } else {
+                            startExoPlayer(url, emptyMap(), 1f)
+                        }
                     }
                 }
             } else if (action.startsWith("app:")) {
@@ -302,26 +417,20 @@ class MainActivity : AppCompatActivity() {
             executeHideSplash()
         }
 
-        private fun setupPlayer() {
-            player = ExoPlayer.Builder(this@MainActivity).build().apply {
-                setVideoTextureView(textureView)
-                addListener(object : Player.Listener {
-                    override fun onRenderedFirstFrame() {
-                        webView.setBackgroundColor(Color.TRANSPARENT)
-                        webView.evaluateJavascript("javascript:if(window.onBackgroundVideoStarted) window.onBackgroundVideoStarted();", null)
-                    }
-                })
-            }
-        }
-
         @JavascriptInterface
-        fun playBackgroundVideo(url: String) {
+        fun playBackgroundVideo(action: String) {
             runOnUiThread {
-                if (player == null) setupPlayer()
-                player?.volume = 0f 
-                player?.setMediaItem(MediaItem.fromUri(url))
-                player?.prepare()
-                player?.play()
+                if (action.startsWith("sniff:")) {
+                    val sniffUrl = action.substring(6)
+                    sniffM3u8(sniffUrl) { m3u8Url, cookie, userAgent, referer ->
+                        runOnUiThread {
+                            val headers = mapOf("User-Agent" to userAgent, "Referer" to referer, "Cookie" to cookie)
+                            startExoPlayer(m3u8Url, headers, 0f)
+                        }
+                    }
+                } else {
+                    startExoPlayer(action, emptyMap(), 0f)
+                }
             }
         }
 
@@ -331,23 +440,26 @@ class MainActivity : AppCompatActivity() {
                 webView.setBackgroundColor(Color.BLACK)
                 player?.stop()
                 player?.clearMediaItems()
+                snifferWebView?.destroy()
+                snifferWebView = null
             }
         }
 
         @JavascriptInterface
-        fun cacheCurrentFrame(streamUrl: String) {
+        fun cacheCurrentFrame(streamActionUrl: String) {
             runOnUiThread {
                 try {
                     val bitmap = textureView.bitmap ?: return@runOnUiThread
                     val scaled = Bitmap.createScaledBitmap(bitmap, 640, 360, true)
-                    val file = File(cacheDir, "frame_${streamUrl.hashCode()}.jpg")
+                    // 使用传入的原始 Action（包含 sniff: 等标识）做 Hash 以作准确对应
+                    val file = File(cacheDir, "frame_${streamActionUrl.hashCode()}.jpg")
                     val out = FileOutputStream(file)
                     scaled.compress(Bitmap.CompressFormat.JPEG, 75, out)
                     out.flush()
                     out.close()
                     
                     val path = "file://${file.absolutePath}"
-                    webView.evaluateJavascript("javascript:if(window.onFrameCached) window.onFrameCached('$streamUrl', '$path');", null)
+                    webView.evaluateJavascript("javascript:if(window.onFrameCached) window.onFrameCached('$streamActionUrl', '$path');", null)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
