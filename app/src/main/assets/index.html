@@ -109,8 +109,9 @@
         }
         .main-content.expanded { transform: translateX(0); }
 
-        .hero-text { margin-bottom: 25px; transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease; display: flex; flex-direction: column; justify-content: flex-end; }
-        .hero-text.lowered { transform: translateY(205px); }
+        /* 视觉微调：底部间距收缩至 12px 靠近卡片；lowered 下沉至 228px 更靠底 */
+        .hero-text { margin-bottom: 12px; transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease; display: flex; flex-direction: column; justify-content: flex-end; }
+        .hero-text.lowered { transform: translateY(228px); }
 
         .brand-title { font-size: 14px; font-weight: 400; letter-spacing: 1px; color: rgba(255,255,255,0.75); margin-bottom: 8px; display: flex; align-items: center; }
         .brand-title svg { width: 16px !important; height: 16px !important; fill: #fff; display: block; flex-shrink: 0; margin-right: 6px; } 
@@ -194,12 +195,15 @@
     </div>
     
     <script>
-        // 加入原生帧同步 API 填充垫，老电视也能获得丝滑动画
         var raf = window.requestAnimationFrame || window.webkitRequestAnimationFrame || function(cb) { setTimeout(cb, 16); };
 
         var CONFIG_URL = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/main/config.json"; 
-        var currentPlayingStream = null;
+        
+        // EPG 全局数据与拉取地址
+        var EPG_DATA = {};
+        var EPG_URL = "https://raw.githubusercontent.com/cohirogaobo/feelcool-tv-config/refs/heads/main/epg_lite.json";
 
+        var currentPlayingStream = null;
         var iptvFrameCache = {};
         try { iptvFrameCache = JSON.parse(localStorage.getItem('iptv_frames') || '{}'); } catch(e){}
 
@@ -221,7 +225,21 @@
 
         var ROW_DATA = {}; 
 
-        // 修复1：使用智能轮询，哪怕旧电视底层注入慢，只要注入完毕立即销毁开屏
+        function fetchEPG() {
+            if (typeof fetch !== 'function') return;
+            fetch(EPG_URL + "?t=" + new Date().getTime())
+                .then(function(res) { return res.ok ? res.json() : Promise.reject(); })
+                .then(function(data) {
+                    EPG_DATA = data;
+                    if (currentFocusEl) {
+                        var title = currentFocusEl.getAttribute('data-title');
+                        if (EPG_DATA[title]) {
+                            document.getElementById('heroSub').innerText = EPG_DATA[title];
+                        }
+                    }
+                }).catch(function(e) {});
+        }
+
         function removeNativeSplash() {
             if(splashRemoved) return;
             var attempts = 0;
@@ -232,7 +250,7 @@
                     clearInterval(checkTimer);
                 }
                 attempts++;
-                if (attempts > 20) clearInterval(checkTimer); // 超时1秒放弃，交给原生层的 onPageFinished 强行兜底
+                if (attempts > 20) clearInterval(checkTimer); 
             }, 50);
         }
 
@@ -309,11 +327,9 @@
                 } catch(e) {}
             }
             
-            // 并发渲染第一优先：不要傻等网络返回才绘制画面
             fetchTrendingShow();
 
             if (typeof fetch === 'function') {
-                // 设置 3 秒网络超时墙，阻断 GitHub 极度卡顿导致的界面假死
                 var controller = null;
                 var timeoutId = null;
                 var fetchOptions = {};
@@ -352,6 +368,10 @@
                 setTimeout(function() { setFocus(initial); }, 100);
                 setTimeout(function() { document.body.classList.remove('preload'); }, 250);
             }
+
+            // 初始化并定时更新 EPG
+            fetchEPG();
+            setInterval(fetchEPG, 30 * 60 * 1000);
         }
 
         function applyTMDBHero(show) {
@@ -383,7 +403,6 @@
         }
 
         function fetchTrendingShow() {
-            // 修复2：如果老电视内核太旧压根没 fetch，立刻退出防崩溃，确保下方的初始化逻辑顺利运行
             if (typeof fetch !== 'function') return;
 
             var apiKey = globalConfig.api.tmdb_api_key || 'f7762624a95e4c3823500736d40162cd';
@@ -527,6 +546,11 @@
                     var title = targetEl.getAttribute('data-title');
                     var sub = targetEl.getAttribute('data-sub');
                     
+                    // 动态注入云端 EPG
+                    if (EPG_DATA[title]) {
+                        sub = EPG_DATA[title];
+                    }
+                    
                     if (isNavCableTV && targetStreamUrl) {
                         bg = iptvFrameCache[targetStreamUrl] || '';
                     }
@@ -569,8 +593,14 @@
             switch(e.key) {
                 case 'ArrowDown':
                     e.preventDefault();
-                    if (col === 0) nextEl = findTargetFocusable(row + 1, 0) || currentFocusEl;
-                    else nextEl = findTargetFocusable(row, 0) || currentFocusEl;
+                    if (col === 0) {
+                        // 导航断层修复：跳过已删除的搜索项
+                        if (row === -1) nextEl = findTargetFocusable(1, 0) || currentFocusEl;
+                        else if (row === 3) nextEl = findTargetFocusable(4, 0) || currentFocusEl;
+                        else nextEl = findTargetFocusable(row + 1, 0) || currentFocusEl;
+                    } else {
+                        nextEl = findTargetFocusable(row, 0) || currentFocusEl;
+                    }
                     break;
                 case 'ArrowUp':
                     e.preventDefault();
@@ -616,7 +646,6 @@
                     break;
             }
             
-            // 修复3：通过硬件帧同步，消灭按键移动时的撕裂和卡顿掉帧
             if (nextEl && nextEl !== currentFocusEl) {
                 raf(function() {
                     setFocus(nextEl);
