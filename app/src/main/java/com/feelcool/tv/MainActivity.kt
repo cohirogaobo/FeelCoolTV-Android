@@ -39,6 +39,7 @@ import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
+    private lateinit var rootLayout: FrameLayout // 将布局提为全局变量，供嗅探器注入
     private lateinit var splashView: ImageView
     private lateinit var webView: WebView
     
@@ -54,10 +55,7 @@ class MainActivity : AppCompatActivity() {
     private var customToast: Toast? = null
     private var isSplashHidden = false
 
-    // 全局存储当前视频流需要的 Headers
     private var currentVideoHeaders: Map<String, String> = emptyMap()
-
-    // 幽灵嗅探器
     private var snifferWebView: WebView? = null
 
     private val antiSleepHandler = Handler(Looper.getMainLooper())
@@ -128,11 +126,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
-        val layout = FrameLayout(this)
-        layout.setBackgroundColor(Color.BLACK)
+        rootLayout = FrameLayout(this)
+        rootLayout.setBackgroundColor(Color.BLACK)
         
         textureView = TextureView(this)
-        layout.addView(textureView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        rootLayout.addView(textureView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
 
         webView = WebView(this)
         webView.setBackgroundColor(Color.BLACK)
@@ -193,7 +191,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         webView.addJavascriptInterface(JSBridge(), "FeelCoolTV")
-        layout.addView(webView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        rootLayout.addView(webView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         
         splashView = ImageView(this)
         splashView.setBackgroundColor(Color.TRANSPARENT)
@@ -202,9 +200,9 @@ class MainActivity : AppCompatActivity() {
             splashView.setImageResource(splashResId)
             splashView.scaleType = ImageView.ScaleType.CENTER_CROP
         }
-        layout.addView(splashView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        rootLayout.addView(splashView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         
-        setContentView(layout)
+        setContentView(rootLayout)
         webView.loadUrl("file:///android_asset/index.html")
 
         antiSleepHandler.postDelayed(antiSleepRunnable, 60 * 1000)
@@ -253,7 +251,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- 核心播放器构造器：注入 Headers ---
     private fun setupPlayer() {
         val dataSourceFactory = DataSource.Factory {
             val httpDataSource = DefaultHttpDataSource.Factory()
@@ -262,7 +259,6 @@ class MainActivity : AppCompatActivity() {
                 .setAllowCrossProtocolRedirects(true)
                 .createDataSource()
             
-            // 动态注入刚才嗅探拿到的所有头信息
             currentVideoHeaders.forEach { (key, value) ->
                 if (value.isNotEmpty()) {
                     httpDataSource.setRequestProperty(key, value)
@@ -293,61 +289,89 @@ class MainActivity : AppCompatActivity() {
         player?.play()
     }
 
-    // --- 核心突破：无头浏览器自动嗅探防盗链 ---
+    // 破防核心：终极实体化嗅探器
     private fun sniffM3u8(targetUrl: String, onFound: (String, String, String, String) -> Unit) {
-        snifferWebView?.destroy()
-        
-        val sniffer = WebView(this)
-        snifferWebView = sniffer
-        
-        val pcUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        sniffer.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            userAgentString = pcUserAgent
-            mediaPlaybackRequiresUserGesture = false
-        }
-        
-        var isFound = false
-
-        // 设置 12 秒的防卡死熔断机制
-        val timeoutHandler = Handler(Looper.getMainLooper())
-        val timeoutRunnable = Runnable {
-            if (!isFound) {
-                isFound = true
-                showPureNativeToast("解析频道视频流超时")
-                sniffer.stopLoading()
-                sniffer.destroy()
-                snifferWebView = null
+        runOnUiThread {
+            snifferWebView?.let {
+                rootLayout.removeView(it)
+                it.destroy()
             }
-        }
-        timeoutHandler.postDelayed(timeoutRunnable, 12000)
-        
-        sniffer.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                val url = request?.url.toString()
-                // 当发现有 .m3u8 结尾的请求，立即收网！
-                if (!isFound && url.contains(".m3u8")) {
+            
+            val sniffer = WebView(this@MainActivity)
+            snifferWebView = sniffer
+            
+            // 伪装 1：强行挤进 UI 树并赋予 1x1 像素大小，彻底击穿 IntersectionObserver 可见性检测
+            val params = FrameLayout.LayoutParams(1, 1)
+            rootLayout.addView(sniffer, 0, params) // 塞在屏幕最底层
+            sniffer.alpha = 0f
+            
+            val pcUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            sniffer.settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                userAgentString = pcUserAgent
+                mediaPlaybackRequiresUserGesture = false 
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            }
+            
+            var isFound = false
+            val timeoutHandler = Handler(Looper.getMainLooper())
+            val timeoutRunnable = Runnable {
+                if (!isFound) {
                     isFound = true
-                    timeoutHandler.removeCallbacks(timeoutRunnable)
-                    
-                    val cookieManager = android.webkit.CookieManager.getInstance()
-                    val cookie = cookieManager.getCookie(targetUrl) ?: ""
-                    val uri = android.net.Uri.parse(targetUrl)
-                    val referer = "${uri.scheme}://${uri.host}/" // 自动提取该网站的主域名作 Referer
-                    
-                    runOnUiThread {
-                        onFound(url, cookie, pcUserAgent, referer)
-                        // 事了拂衣去，销毁嗅探器
-                        sniffer.stopLoading()
-                        sniffer.destroy()
-                        snifferWebView = null
-                    }
+                    showPureNativeToast("嗅探超时：该频道防盗链阻断")
+                    sniffer.stopLoading()
+                    rootLayout.removeView(sniffer)
+                    sniffer.destroy()
+                    snifferWebView = null
                 }
-                return super.shouldInterceptRequest(view, request)
             }
+            // 宽限至 15 秒，给 NTV 这种带重定向和加载画面的网页留足时间
+            timeoutHandler.postDelayed(timeoutRunnable, 15000)
+            
+            sniffer.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    // 伪装 2：JS 暴力交互模拟器，解开静音并疯狂点击屏幕上所有可能存在的播放按钮
+                    view?.evaluateJavascript("""
+                        (function() {
+                            var attempt = 0;
+                            var forcePlay = setInterval(function() {
+                                attempt++;
+                                var v = document.querySelector('video');
+                                if(v) { v.muted = true; v.play(); }
+                                var btns = document.querySelectorAll('button, div[class*="play"], div[class*="Play"], .vjs-big-play-button');
+                                btns.forEach(function(b) { b.click(); });
+                                if(attempt > 20) clearInterval(forcePlay);
+                            }, 500);
+                        })();
+                    """.trimIndent(), null)
+                }
+
+                override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                    val url = request?.url.toString()
+                    if (!isFound && url.contains(".m3u8")) {
+                        isFound = true
+                        timeoutHandler.removeCallbacks(timeoutRunnable)
+                        
+                        val cookieManager = android.webkit.CookieManager.getInstance()
+                        val cookie = cookieManager.getCookie(targetUrl) ?: ""
+                        val uri = android.net.Uri.parse(targetUrl)
+                        val referer = "${uri.scheme}://${uri.host}/"
+                        
+                        runOnUiThread {
+                            onFound(url, cookie, pcUserAgent, referer)
+                            sniffer.stopLoading()
+                            rootLayout.removeView(sniffer)
+                            sniffer.destroy()
+                            snifferWebView = null
+                        }
+                    }
+                    return super.shouldInterceptRequest(view, request)
+                }
+            }
+            sniffer.loadUrl(targetUrl)
         }
-        sniffer.loadUrl(targetUrl)
     }
 
     inner class JSBridge {
@@ -364,7 +388,7 @@ class MainActivity : AppCompatActivity() {
                     
                     if (isSniff) {
                         val sniffUrl = action.substring(6)
-                        showPureNativeToast("正在解析底层直播源...")
+                        showPureNativeToast("正在突破防盗链并解析源...")
                         sniffM3u8(sniffUrl) { m3u8Url, cookie, userAgent, referer ->
                             runOnUiThread {
                                 val headers = mapOf("User-Agent" to userAgent, "Referer" to referer, "Cookie" to cookie)
@@ -440,7 +464,11 @@ class MainActivity : AppCompatActivity() {
                 webView.setBackgroundColor(Color.BLACK)
                 player?.stop()
                 player?.clearMediaItems()
-                snifferWebView?.destroy()
+                snifferWebView?.let {
+                    it.stopLoading()
+                    rootLayout.removeView(it)
+                    it.destroy()
+                }
                 snifferWebView = null
             }
         }
@@ -451,7 +479,6 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val bitmap = textureView.bitmap ?: return@runOnUiThread
                     val scaled = Bitmap.createScaledBitmap(bitmap, 640, 360, true)
-                    // 使用传入的原始 Action（包含 sniff: 等标识）做 Hash 以作准确对应
                     val file = File(cacheDir, "frame_${streamActionUrl.hashCode()}.jpg")
                     val out = FileOutputStream(file)
                     scaled.compress(Bitmap.CompressFormat.JPEG, 75, out)
