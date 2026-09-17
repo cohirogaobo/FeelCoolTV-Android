@@ -14,7 +14,6 @@ import android.view.TextureView
 import android.view.View
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
-import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -45,15 +44,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var splashView: ImageView
     private lateinit var webView: WebView
     
-    // ExoPlayer 资源（用于常规 IPTV）
     private var player: ExoPlayer? = null
     private lateinit var textureView: TextureView
     
-    // WebLive 资源（用于将计就计的网页全屏直播）
     private var liveWebView: WebView? = null
-    private lateinit var fullscreenContainer: FrameLayout
     private lateinit var loadingOverlay: TextView
-    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     
     private var backPressCount = 0
     private var lastBackPressTime = 0L
@@ -197,23 +192,17 @@ class MainActivity : AppCompatActivity() {
         webView.addJavascriptInterface(JSBridge(), "FeelCoolTV")
         rootLayout.addView(webView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         
-        // --- 网页全屏播放器的专属遮罩层与容器 ---
-        fullscreenContainer = FrameLayout(this)
-        fullscreenContainer.setBackgroundColor(Color.BLACK)
-        fullscreenContainer.visibility = View.GONE
-        rootLayout.addView(fullscreenContainer, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-
         loadingOverlay = TextView(this).apply {
             text = "正在安全接入实况画面..."
             setTextColor(Color.WHITE)
-            textSize = 20f
+            textSize = 18f
             letterSpacing = 0.1f
             gravity = android.view.Gravity.CENTER
             setBackgroundColor(Color.BLACK)
             visibility = View.GONE
+            z = 9999f // 确保遮罩永远在最上层
         }
         rootLayout.addView(loadingOverlay, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-        // ------------------------------------
         
         splashView = ImageView(this)
         splashView.setBackgroundColor(Color.TRANSPARENT)
@@ -221,6 +210,7 @@ class MainActivity : AppCompatActivity() {
         if (splashResId != 0) {
             splashView.setImageResource(splashResId)
             splashView.scaleType = ImageView.ScaleType.CENTER_CROP
+            splashView.z = 10000f
         }
         rootLayout.addView(splashView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         
@@ -245,7 +235,7 @@ class MainActivity : AppCompatActivity() {
                 webView.visibility = View.VISIBLE
                 webView.requestFocus() 
                 player?.volume = 0f    
-                stopWebLive() // 退出时销毁后台全屏网页
+                stopWebLive() 
                 backPressCount = 0 
             } else {
                 showPureNativeToast("再按 ${3 - iptvExitCount} 次退出全屏")
@@ -312,16 +302,12 @@ class MainActivity : AppCompatActivity() {
             }
             liveWebView = null
             
-            fullscreenContainer.removeAllViews()
-            fullscreenContainer.visibility = View.GONE
             loadingOverlay.visibility = View.GONE
-            
-            customViewCallback?.onCustomViewHidden()
-            customViewCallback = null
+            loadingOverlay.alpha = 1f
         }
     }
 
-    // 核心降维打击：将计就计，直接用隐藏的 WebView 加载网页，注入 CSS 把播放器撑满全屏
+    // 终极进化的 WebLive 引擎
     private fun startWebLive(targetUrl: String, isBackground: Boolean, actionStr: String) {
         runOnUiThread {
             stopWebLive()
@@ -329,119 +315,96 @@ class MainActivity : AppCompatActivity() {
             val wv = WebView(this@MainActivity)
             liveWebView = wv
             
-            // 垫在底部的索引 0 位置
+            // 将网页塞入图层底部
             rootLayout.addView(wv, 0, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             
             if (!isBackground) {
                 loadingOverlay.visibility = View.VISIBLE
                 loadingOverlay.alpha = 1f
+                loadingOverlay.bringToFront()
             }
 
             wv.settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
-                mediaPlaybackRequiresUserGesture = false 
+                mediaPlaybackRequiresUserGesture = false // 核心：赋予底层自动播放声音的权限
                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                 userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
             
-            wv.webChromeClient = object : WebChromeClient() {
-                // 如果网页播放器自带了全屏 API，完美接管
-                override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-                    super.onShowCustomView(view, callback)
-                    fullscreenContainer.addView(view)
-                    fullscreenContainer.visibility = View.VISIBLE
-                    loadingOverlay.visibility = View.GONE
-                    customViewCallback = callback
-                }
-                override fun onHideCustomView() {
-                    super.onHideCustomView()
-                    fullscreenContainer.removeAllViews()
-                    fullscreenContainer.visibility = View.GONE
-                    customViewCallback?.onCustomViewHidden()
-                }
-            }
-
             wv.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    val mutedStr = if (isBackground) "true" else "false"
+                    val isMuted = if (isBackground) "true" else "false"
                     val js = """
                         (function() {
-                            // 1. CSS 手术刀：隐藏网页上的所有花里胡哨，把播放器绝对定位撑满全屏
+                            // 1. 霸道 CSS：将除了 video 以外的所有东西强制抹杀，把 video 本身拉满全屏
                             var style = document.createElement('style');
                             style.innerHTML = `
-                                header, footer, .global-navigation, .sideContents, 
-                                .liveContent-header, .liveContent-subtext, .liveContent-content,
-                                .publicity-contents, .ranking-list, .sponsoredArticles, #taboola-widget, iframe { 
+                                body * { visibility: hidden !important; background-color: #000 !important; }
+                                body, html, #appMountPoint, .mainView, .contentsWrapper, .pcLayoutWrapper, 
+                                .mainContents, .articleDetailWrapper, .liveContent, .liveContent-body, 
+                                .player-block, .player-block *, video {
+                                    visibility: visible !important;
+                                    background: #000 !important;
+                                }
+                                .vjs-control-bar, .vjs-big-play-button, .vjs-loading-spinner, 
+                                .play-button, .vjs-text-track-display, .vjs-error-display {
                                     display: none !important; opacity: 0 !important; pointer-events: none !important;
                                 }
-                                body, html, #appMountPoint, .mainView, .contentsWrapper, 
-                                .pcLayoutWrapper, .mainContents, .articleDetailWrapper, 
-                                .liveContent, .liveContent-body {
-                                    margin: 0 !important; padding: 0 !important;
-                                    width: 100vw !important; height: 100vh !important;
-                                    max-width: none !important; min-width: 0 !important;
-                                    background: #000 !important; overflow: hidden !important;
-                                }
-                                .player-block {
-                                    position: fixed !important; top: 0 !important; left: 0 !important;
-                                    width: 100vw !important; height: 100vh !important;
-                                    z-index: 999999 !important; background: #000 !important;
-                                }
-                                video {
-                                    width: 100vw !important; height: 100vh !important;
-                                    object-fit: contain !important;
-                                }
+                                body, html { margin: 0 !important; padding: 0 !important; width: 100vw !important; height: 100vh !important; overflow: hidden !important; }
+                                .player-block { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 999999 !important; }
+                                video { width: 100vw !important; height: 100vh !important; object-fit: contain !important; }
                             `;
                             document.head.appendChild(style);
 
-                            // 2. 暴力交互模拟：解开静音并疯狂点击播放按钮
+                            // 2. 智能心跳轮询：确保解开静音，并精准捕获视频真实播出的瞬间
                             var attempt = 0;
                             var evOpts = {bubbles:true, cancelable:true, view: window};
-                            var forcePlay = setInterval(function() {
-                                attempt++;
+                            
+                            var checkPlay = setInterval(function() {
                                 var v = document.querySelector('video');
                                 if(v) { 
-                                    v.muted = $mutedStr; 
+                                    v.muted = $isMuted; 
+                                    if(!$isMuted) v.volume = 1.0;
                                     var p = v.play(); 
                                     if(p) p.catch(function(){}); 
+                                    
+                                    // 核心：唯有当视频时间戳开始滚动，才算真正就绪！
+                                    if (v.currentTime > 0.1 && !v.paused) {
+                                        clearInterval(checkPlay);
+                                        if ($isMuted) {
+                                            window.FeelCoolTV.onBackgroundVideoStarted();
+                                            setTimeout(function() {
+                                                try {
+                                                    var canvas = document.createElement('canvas');
+                                                    canvas.width = 640; canvas.height = 360;
+                                                    canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
+                                                    var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                                                    window.FeelCoolTV.cacheWebFrame(dataUrl, '$actionStr');
+                                                } catch(e) {}
+                                            }, 2000);
+                                        } else {
+                                            // 通知安卓层撤去黑幕
+                                            window.FeelCoolTV.onWebLiveReady();
+                                        }
+                                    }
                                 }
                                 
-                                var playBtns = document.querySelectorAll('button.play-button, .vjs-big-play-button, .handle-play-button');
-                                playBtns.forEach(function(b) { 
+                                // 备用：暴力触发网页自身的初始点击事件
+                                var btns = document.querySelectorAll('button.play-button, .vjs-big-play-button, .handle-play-button');
+                                btns.forEach(function(b) { 
                                     b.click(); 
                                     b.dispatchEvent(new MouseEvent('mousedown', evOpts));
                                     b.dispatchEvent(new MouseEvent('mouseup', evOpts));
                                 });
-                                
-                                // 如果是全屏模式，尝试点击网页自带的全屏按钮
-                                if (!$mutedStr) {
-                                    var fsBtns = document.querySelectorAll('button[title*="全屏"], button[aria-label*="ullscreen"], .vjs-fullscreen-control');
-                                    fsBtns.forEach(function(b) { b.click(); });
-                                }
 
-                                if(attempt > 20) clearInterval(forcePlay);
-                            }, 500);
-
-                            // 3. 收尾工作：通知安卓层拉开黑幕
-                            setTimeout(function() {
-                                if ($mutedStr) {
-                                    // 背景静音预览模式：直接通知开始，并利用 Canvas 截取网页视频帧回传！
-                                    window.FeelCoolTV.onBackgroundVideoStarted();
-                                    
-                                    var v = document.querySelector('video');
-                                    if (v && v.readyState >= 2) {
-                                        var canvas = document.createElement('canvas');
-                                        canvas.width = 640; canvas.height = 360;
-                                        canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
-                                        var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-                                        window.FeelCoolTV.cacheWebFrame(dataUrl, '$actionStr');
-                                    }
-                                } else {
-                                    // 全屏播放模式：通知撤掉黑色遮罩
-                                    window.FeelCoolTV.onWebLiveReady();
+                                attempt++;
+                                // 12秒熔断：如果网络太卡，也强行拉开黑幕看看情况
+                                if(attempt > 48) {
+                                    clearInterval(checkPlay);
+                                    if (!$isMuted) window.FeelCoolTV.onWebLiveReady();
                                 }
-                            }, 3500); // 留3.5秒给网页缓冲视频
+                            }, 250);
                         })();
                     """.trimIndent()
                     view?.evaluateJavascript(js, null)
@@ -469,7 +432,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 神奇的 Canvas 回传：将网页上画出的图像转回安卓保存为缓存海报
         @JavascriptInterface
         fun cacheWebFrame(base64DataUrl: String, streamActionUrl: String) {
             runOnUiThread {
@@ -504,7 +466,6 @@ class MainActivity : AppCompatActivity() {
                     
                     if (isSniff) {
                         val sniffUrl = action.substring(6)
-                        // 将计就计模式，直接全屏渲染网页
                         startWebLive(sniffUrl, false, action)
                     } else {
                         val url = action.substring(5)
@@ -557,7 +518,6 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (action.startsWith("sniff:")) {
                     val sniffUrl = action.substring(6)
-                    // 背景静音预览模式
                     startWebLive(sniffUrl, true, action)
                 } else {
                     startExoPlayer(action.substring(5), 0f)
