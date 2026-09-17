@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity() {
     
     private var liveWebView: WebView? = null
     private lateinit var loadingOverlay: TextView
+    private var isWebLiveReady = false
     
     private var backPressCount = 0
     private var lastBackPressTime = 0L
@@ -169,6 +170,8 @@ class MainActivity : AppCompatActivity() {
 
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url.toString()
+                
+                // 仅拦截 TMDB 绕过污染，绝对不拦截 Github
                 if (url.contains("api.themoviedb.org")) {
                     if (request?.method.equals("OPTIONS", ignoreCase = true)) {
                         val corsHeaders = mutableMapOf("Access-Control-Allow-Origin" to "*", "Access-Control-Allow-Methods" to "GET, POST, OPTIONS", "Access-Control-Allow-Headers" to "*")
@@ -192,6 +195,7 @@ class MainActivity : AppCompatActivity() {
         webView.addJavascriptInterface(JSBridge(), "FeelCoolTV")
         rootLayout.addView(webView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         
+        // --- 稳如泰山的黑幕遮罩 ---
         loadingOverlay = TextView(this).apply {
             text = "正在安全接入实况画面..."
             setTextColor(Color.WHITE)
@@ -200,9 +204,10 @@ class MainActivity : AppCompatActivity() {
             gravity = android.view.Gravity.CENTER
             setBackgroundColor(Color.BLACK)
             visibility = View.GONE
-            z = 9999f // 确保遮罩永远在最上层
+            z = 9999f 
         }
         rootLayout.addView(loadingOverlay, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        // ------------------------------------
         
         splashView = ImageView(this)
         splashView.setBackgroundColor(Color.TRANSPARENT)
@@ -301,24 +306,96 @@ class MainActivity : AppCompatActivity() {
                 it.destroy()
             }
             liveWebView = null
-            
             loadingOverlay.visibility = View.GONE
             loadingOverlay.alpha = 1f
         }
     }
 
-    // 终极进化的 WebLive 引擎
+    // --- 在任意时机注入手术刀，绝不等 onPageFinished ---
+    private fun injectHackJs(view: WebView?, isBackground: Boolean, actionStr: String) {
+        val mutedStr = if (isBackground) "true" else "false"
+        val js = """
+            (function() {
+                var styleId = 'feelcool-tv-hack';
+                if (!document.getElementById(styleId)) {
+                    var style = document.createElement('style');
+                    style.id = styleId;
+                    style.innerHTML = `
+                        body * { visibility: hidden !important; background-color: #000 !important; }
+                        body, html, #appMountPoint, .mainView, .contentsWrapper, .pcLayoutWrapper, 
+                        .mainContents, .articleDetailWrapper, .liveContent, .liveContent-body, 
+                        .player-block, .player-block *, video {
+                            visibility: visible !important; background: transparent !important;
+                        }
+                        .player-block { 
+                            position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+                            width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important; margin: 0 !important; padding: 0 !important;
+                        }
+                        video { width: 100vw !important; height: 100vh !important; object-fit: contain !important; background: #000 !important; }
+                        .vjs-control-bar, .vjs-big-play-button, .play-button, .liveContent-header, .liveContent-content, .liveContent-subtext, .publicity-contents, .sideContents {
+                            display: none !important; opacity: 0 !important; pointer-events: none !important;
+                        }
+                    `;
+                    document.documentElement.appendChild(style);
+                }
+                
+                var v = document.querySelector('video');
+                if(v && !window.hasStartedFeelCoolPlay) {
+                    window.hasStartedFeelCoolPlay = true;
+                    var attempt = 0;
+                    var checkPlay = setInterval(function() {
+                        v.muted = $mutedStr;
+                        if (!$mutedStr) v.volume = 1.0;
+                        
+                        var p = v.play();
+                        if(p) p.catch(function(){});
+                        
+                        var btns = document.querySelectorAll('button.play-button, .vjs-big-play-button, .handle-play-button');
+                        btns.forEach(function(b) { b.click(); });
+
+                        // 心跳探测：确保视频真的出画面了，才通知安卓拉开黑幕！
+                        if (v.currentTime > 0.5 && !v.paused) {
+                            clearInterval(checkPlay);
+                            window.FeelCoolTV.onWebLiveReady();
+                            ${if (isBackground) """
+                                setTimeout(function() {
+                                    try {
+                                        var canvas = document.createElement('canvas');
+                                        canvas.width = 640; canvas.height = 360;
+                                        canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
+                                        window.FeelCoolTV.cacheWebFrame(canvas.toDataURL('image/jpeg', 0.7), '$actionStr');
+                                    } catch(e){}
+                                }, 1500);
+                            """ else ""}
+                        }
+                        attempt++;
+                        // 15秒熔断强行显示
+                        if(attempt > 60) {
+                            clearInterval(checkPlay);
+                            if (!$mutedStr) window.FeelCoolTV.onWebLiveReady();
+                        }
+                    }, 250);
+                }
+            })();
+        """.trimIndent()
+        view?.evaluateJavascript(js, null)
+    }
+
     private fun startWebLive(targetUrl: String, isBackground: Boolean, actionStr: String) {
         runOnUiThread {
             stopWebLive()
+            isWebLiveReady = false
 
             val wv = WebView(this@MainActivity)
             liveWebView = wv
             
-            // 将网页塞入图层底部
             rootLayout.addView(wv, 0, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             
+            // 核心修复：WebView 强制隐身，死死盖住遮罩
+            wv.alpha = 0f 
+            
             if (!isBackground) {
+                loadingOverlay.text = "正在安全接入实况画面..."
                 loadingOverlay.visibility = View.VISIBLE
                 loadingOverlay.alpha = 1f
                 loadingOverlay.bringToFront()
@@ -327,87 +404,20 @@ class MainActivity : AppCompatActivity() {
             wv.settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
-                mediaPlaybackRequiresUserGesture = false // 核心：赋予底层自动播放声音的权限
+                mediaPlaybackRequiresUserGesture = false 
                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                 userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
             
             wv.webViewClient = object : WebViewClient() {
+                // 不等网页加载完，提前抢跑疯狂注入 CSS 和解除静音
+                override fun onLoadResource(view: WebView?, url: String?) {
+                    super.onLoadResource(view, url)
+                    injectHackJs(view, isBackground, actionStr)
+                }
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    val isMuted = if (isBackground) "true" else "false"
-                    val js = """
-                        (function() {
-                            // 1. 霸道 CSS：将除了 video 以外的所有东西强制抹杀，把 video 本身拉满全屏
-                            var style = document.createElement('style');
-                            style.innerHTML = `
-                                body * { visibility: hidden !important; background-color: #000 !important; }
-                                body, html, #appMountPoint, .mainView, .contentsWrapper, .pcLayoutWrapper, 
-                                .mainContents, .articleDetailWrapper, .liveContent, .liveContent-body, 
-                                .player-block, .player-block *, video {
-                                    visibility: visible !important;
-                                    background: #000 !important;
-                                }
-                                .vjs-control-bar, .vjs-big-play-button, .vjs-loading-spinner, 
-                                .play-button, .vjs-text-track-display, .vjs-error-display {
-                                    display: none !important; opacity: 0 !important; pointer-events: none !important;
-                                }
-                                body, html { margin: 0 !important; padding: 0 !important; width: 100vw !important; height: 100vh !important; overflow: hidden !important; }
-                                .player-block { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 999999 !important; }
-                                video { width: 100vw !important; height: 100vh !important; object-fit: contain !important; }
-                            `;
-                            document.head.appendChild(style);
-
-                            // 2. 智能心跳轮询：确保解开静音，并精准捕获视频真实播出的瞬间
-                            var attempt = 0;
-                            var evOpts = {bubbles:true, cancelable:true, view: window};
-                            
-                            var checkPlay = setInterval(function() {
-                                var v = document.querySelector('video');
-                                if(v) { 
-                                    v.muted = $isMuted; 
-                                    if(!$isMuted) v.volume = 1.0;
-                                    var p = v.play(); 
-                                    if(p) p.catch(function(){}); 
-                                    
-                                    // 核心：唯有当视频时间戳开始滚动，才算真正就绪！
-                                    if (v.currentTime > 0.1 && !v.paused) {
-                                        clearInterval(checkPlay);
-                                        if ($isMuted) {
-                                            window.FeelCoolTV.onBackgroundVideoStarted();
-                                            setTimeout(function() {
-                                                try {
-                                                    var canvas = document.createElement('canvas');
-                                                    canvas.width = 640; canvas.height = 360;
-                                                    canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
-                                                    var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-                                                    window.FeelCoolTV.cacheWebFrame(dataUrl, '$actionStr');
-                                                } catch(e) {}
-                                            }, 2000);
-                                        } else {
-                                            // 通知安卓层撤去黑幕
-                                            window.FeelCoolTV.onWebLiveReady();
-                                        }
-                                    }
-                                }
-                                
-                                // 备用：暴力触发网页自身的初始点击事件
-                                var btns = document.querySelectorAll('button.play-button, .vjs-big-play-button, .handle-play-button');
-                                btns.forEach(function(b) { 
-                                    b.click(); 
-                                    b.dispatchEvent(new MouseEvent('mousedown', evOpts));
-                                    b.dispatchEvent(new MouseEvent('mouseup', evOpts));
-                                });
-
-                                attempt++;
-                                // 12秒熔断：如果网络太卡，也强行拉开黑幕看看情况
-                                if(attempt > 48) {
-                                    clearInterval(checkPlay);
-                                    if (!$isMuted) window.FeelCoolTV.onWebLiveReady();
-                                }
-                            }, 250);
-                        })();
-                    """.trimIndent()
-                    view?.evaluateJavascript(js, null)
+                    super.onPageFinished(view, url)
+                    injectHackJs(view, isBackground, actionStr)
                 }
             }
             wv.loadUrl(targetUrl)
@@ -418,6 +428,12 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun onWebLiveReady() {
             runOnUiThread {
+                if (isWebLiveReady) return@runOnUiThread
+                isWebLiveReady = true
+                
+                // 真就绪后，才把网页露出来，撤掉黑幕
+                liveWebView?.animate()?.alpha(1f)?.setDuration(400)?.start()
+                
                 loadingOverlay.animate().alpha(0f).setDuration(600).withEndAction {
                     loadingOverlay.visibility = View.GONE
                 }
@@ -532,26 +548,6 @@ class MainActivity : AppCompatActivity() {
                 player?.stop()
                 player?.clearMediaItems()
                 stopWebLive()
-            }
-        }
-
-        @JavascriptInterface
-        fun cacheCurrentFrame(streamActionUrl: String) {
-            runOnUiThread {
-                try {
-                    val bitmap = textureView.bitmap ?: return@runOnUiThread
-                    val scaled = Bitmap.createScaledBitmap(bitmap, 640, 360, true)
-                    val file = File(cacheDir, "frame_${streamActionUrl.hashCode()}.jpg")
-                    val out = FileOutputStream(file)
-                    scaled.compress(Bitmap.CompressFormat.JPEG, 75, out)
-                    out.flush()
-                    out.close()
-                    
-                    val path = "file://${file.absolutePath}"
-                    webView.evaluateJavascript("javascript:if(window.onFrameCached) window.onFrameCached('$streamActionUrl', '$path');", null)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
             }
         }
     }
