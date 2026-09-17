@@ -336,12 +336,14 @@ class MainActivity : AppCompatActivity() {
             val sniffer = WebView(this@MainActivity)
             snifferWebView = sniffer
             
-            // 伪装 1：强行塞满全屏尺寸，但压在整个界面的最底层（Index 0），避开所有网页元素的 IntersectionObserver 检测
+            // 伪装 1：强行塞满全屏尺寸，完美骗过 IntersectionObserver 检测。
             val params = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             rootLayout.addView(sniffer, 0, params) 
+            // 绝对不可见：设置为 1% 透明度
+            sniffer.alpha = 0.01f
             
-            // 伪装 2：采用高权重的 macOS Chrome，避开防爬虫墙
-            currentPcUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            // 伪装 2：采用高权重的 macOS Safari，完美避开 Widevine DRM 强迫其下发明文 .m3u8
+            currentPcUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15"
             sniffer.settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -361,31 +363,54 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             sniffTimeoutRunnable = timeoutRunnable
-            Handler(Looper.getMainLooper()).postDelayed(timeoutRunnable, 15000) // 放宽至 15 秒
+            // 放宽至 20 秒，给 API 数据交换留足时间
+            Handler(Looper.getMainLooper()).postDelayed(timeoutRunnable, 20000) 
             
             sniffer.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    // 伪装 3：双管齐下，既深度拦截 fetch/XHR，又用完整的 MouseEvent 模拟真实人类的按压和抬起动作
+                    // 伪装 3：降维打击，不仅暴力点击，还劫持底层的 fetch 和 XHR 窃取 JSON 返回包
                     view?.evaluateJavascript("""
                         (function() {
+                            // 劫持 Fetch
                             const originalFetch = window.fetch;
-                            window.fetch = function() {
+                            window.fetch = async function() {
                                 var reqUrl = (arguments[0] instanceof Request) ? arguments[0].url : arguments[0];
-                                if(reqUrl && typeof reqUrl === 'string' && reqUrl.indexOf('.m3u8') !== -1) {
+                                
+                                // 针对日本 NTV 专用的 API 偷取逻辑
+                                if(reqUrl && typeof reqUrl === 'string' && reqUrl.indexOf('playback.api.streaks.jp') !== -1) {
+                                    var response = await originalFetch.apply(this, arguments);
+                                    var clone = response.clone();
+                                    clone.json().then(function(data) {
+                                        if(data && data.url) window.FeelCoolTV.onM3u8Found(data.url);
+                                    }).catch(function(e){});
+                                    return response;
+                                }
+                                
+                                if(reqUrl && typeof reqUrl === 'string' && (reqUrl.indexOf('.m3u8') !== -1 || reqUrl.indexOf('.mpd') !== -1)) {
                                     window.FeelCoolTV.onM3u8Found(reqUrl);
                                 }
                                 return originalFetch.apply(this, arguments);
                             };
 
+                            // 劫持 XHR
                             const originalOpen = XMLHttpRequest.prototype.open;
                             XMLHttpRequest.prototype.open = function(method, reqUrl) {
-                                if(reqUrl && typeof reqUrl === 'string' && reqUrl.indexOf('.m3u8') !== -1) {
+                                if(reqUrl && typeof reqUrl === 'string' && (reqUrl.indexOf('.m3u8') !== -1 || reqUrl.indexOf('.mpd') !== -1)) {
                                     window.FeelCoolTV.onM3u8Found(reqUrl);
                                 }
+                                this.addEventListener('load', function() {
+                                    if(reqUrl && typeof reqUrl === 'string' && reqUrl.indexOf('playback.api.streaks.jp') !== -1) {
+                                        try {
+                                            var data = JSON.parse(this.responseText);
+                                            if(data && data.url) window.FeelCoolTV.onM3u8Found(data.url);
+                                        } catch(e){}
+                                    }
+                                });
                                 originalOpen.apply(this, arguments);
                             };
 
+                            // 暴力人类模拟器
                             var attempt = 0;
                             var evOpts = {bubbles:true, cancelable:true, view: window};
                             var forcePlay = setInterval(function() {
@@ -400,16 +425,16 @@ class MainActivity : AppCompatActivity() {
                                     b.dispatchEvent(new MouseEvent('click', evOpts));
                                 });
 
-                                if(attempt > 25) clearInterval(forcePlay);
-                            }, 400);
+                                if(attempt > 40) clearInterval(forcePlay);
+                            }, 500);
                         })();
                     """.trimIndent(), null)
                 }
 
-                // 兜底拦截：如果视频没走 fetch 而是直接挂在了 video 标签上
+                // 兜底拦截：如果视频没走 fetch 而是直接挂在了 DOM 上
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                     val reqUrl = request?.url.toString()
-                    if (reqUrl.contains(".m3u8")) {
+                    if (!isSniffFound && (reqUrl.contains(".m3u8") || reqUrl.contains(".mpd"))) {
                         runOnUiThread { handleM3u8Found(reqUrl) }
                     }
                     return super.shouldInterceptRequest(view, request)
