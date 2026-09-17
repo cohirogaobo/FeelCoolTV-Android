@@ -260,18 +260,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupPlayer() {
         val dataSourceFactory = DataSource.Factory {
-            val httpDataSource = DefaultHttpDataSource.Factory()
+            val factory = DefaultHttpDataSource.Factory()
                 .setConnectTimeoutMs(15000)
                 .setReadTimeoutMs(15000)
                 .setAllowCrossProtocolRedirects(true)
-                .createDataSource()
             
+            val defaultHeaders = mutableMapOf<String, String>()
             currentVideoHeaders.forEach { (key, value) ->
                 if (value.isNotEmpty()) {
-                    httpDataSource.setRequestProperty(key, value)
+                    if (key.equals("User-Agent", ignoreCase = true)) {
+                        factory.setUserAgent(value)
+                    } else {
+                        defaultHeaders[key] = value
+                    }
                 }
             }
-            httpDataSource
+            factory.setDefaultRequestProperties(defaultHeaders)
+            factory.createDataSource()
         }
 
         player = ExoPlayer.Builder(this@MainActivity)
@@ -342,8 +347,8 @@ class MainActivity : AppCompatActivity() {
             // 绝对不可见：设置为 1% 透明度
             sniffer.alpha = 0.01f
             
-            // 伪装 2：采用高权重的 macOS Safari，完美避开 Widevine DRM 强迫其下发明文 .m3u8
-            currentPcUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15"
+            // 伪装 2：采用高权重的 Windows Chrome
+            currentPcUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
             sniffer.settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -377,12 +382,14 @@ class MainActivity : AppCompatActivity() {
                             window.fetch = async function() {
                                 var reqUrl = (arguments[0] instanceof Request) ? arguments[0].url : arguments[0];
                                 
-                                // 针对日本 NTV 专用的 API 偷取逻辑
                                 if(reqUrl && typeof reqUrl === 'string' && reqUrl.indexOf('playback.api.streaks.jp') !== -1) {
                                     var response = await originalFetch.apply(this, arguments);
                                     var clone = response.clone();
                                     clone.json().then(function(data) {
-                                        if(data && data.url) window.FeelCoolTV.onM3u8Found(data.url);
+                                        var streamUrl = data.url || (data.stream && data.stream.url) || (data.session && data.session.stream && data.session.stream.url);
+                                        if(streamUrl && (streamUrl.indexOf('.m3u8') !== -1)) {
+                                            window.FeelCoolTV.onM3u8Found(streamUrl);
+                                        }
                                     }).catch(function(e){});
                                     return response;
                                 }
@@ -403,7 +410,8 @@ class MainActivity : AppCompatActivity() {
                                     if(reqUrl && typeof reqUrl === 'string' && reqUrl.indexOf('playback.api.streaks.jp') !== -1) {
                                         try {
                                             var data = JSON.parse(this.responseText);
-                                            if(data && data.url) window.FeelCoolTV.onM3u8Found(data.url);
+                                            var streamUrl = data.url || (data.stream && data.stream.url);
+                                            if(streamUrl) window.FeelCoolTV.onM3u8Found(streamUrl);
                                         } catch(e){}
                                     }
                                 });
@@ -418,11 +426,11 @@ class MainActivity : AppCompatActivity() {
                                 var v = document.querySelector('video');
                                 if(v) { v.muted = true; var p = v.play(); if(p) p.catch(function(){}); }
                                 
-                                var btns = document.querySelectorAll('button, .play-button, .player-block, .vjs-big-play-button');
+                                var btns = document.querySelectorAll('button, .play-button, .player-block, .handle-play-button');
                                 btns.forEach(function(b) { 
+                                    b.click(); // 直接调用原生 click 处理 React 事件
                                     b.dispatchEvent(new MouseEvent('mousedown', evOpts));
                                     b.dispatchEvent(new MouseEvent('mouseup', evOpts));
-                                    b.dispatchEvent(new MouseEvent('click', evOpts));
                                 });
 
                                 if(attempt > 40) clearInterval(forcePlay);
@@ -467,7 +475,12 @@ class MainActivity : AppCompatActivity() {
                         showPureNativeToast("正在突破防盗链并解析源...")
                         sniffM3u8(sniffUrl) { m3u8Url, cookie, userAgent, referer ->
                             runOnUiThread {
-                                val headers = mapOf("User-Agent" to userAgent, "Referer" to referer, "Cookie" to cookie)
+                                val headers = mapOf(
+                                    "User-Agent" to userAgent, 
+                                    "Referer" to referer, 
+                                    "Origin" to "https://news.ntv.co.jp",
+                                    "Cookie" to cookie
+                                )
                                 startExoPlayer(m3u8Url, headers, 1f)
                             }
                         }
@@ -524,7 +537,12 @@ class MainActivity : AppCompatActivity() {
                     val sniffUrl = action.substring(6)
                     sniffM3u8(sniffUrl) { m3u8Url, cookie, userAgent, referer ->
                         runOnUiThread {
-                            val headers = mapOf("User-Agent" to userAgent, "Referer" to referer, "Cookie" to cookie)
+                            val headers = mapOf(
+                                "User-Agent" to userAgent, 
+                                "Referer" to referer, 
+                                "Origin" to "https://news.ntv.co.jp",
+                                "Cookie" to cookie
+                            )
                             startExoPlayer(m3u8Url, headers, 0f)
                         }
                     }
