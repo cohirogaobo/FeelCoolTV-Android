@@ -8,11 +8,13 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
 import android.view.KeyEvent
 import android.view.TextureView
 import android.view.View
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -43,8 +45,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var splashView: ImageView
     private lateinit var webView: WebView
     
+    // ExoPlayer 资源（用于常规 IPTV）
     private var player: ExoPlayer? = null
     private lateinit var textureView: TextureView
+    
+    // WebLive 资源（用于将计就计的网页全屏直播）
+    private var liveWebView: WebView? = null
+    private lateinit var fullscreenContainer: FrameLayout
+    private lateinit var loadingOverlay: TextView
+    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     
     private var backPressCount = 0
     private var lastBackPressTime = 0L
@@ -54,15 +63,6 @@ class MainActivity : AppCompatActivity() {
     
     private var customToast: Toast? = null
     private var isSplashHidden = false
-
-    private var currentVideoHeaders: Map<String, String> = emptyMap()
-    
-    private var snifferWebView: WebView? = null
-    private var isSniffFound = false
-    private var currentSniffUrl = ""
-    private var currentPcUserAgent = ""
-    private var sniffTimeoutRunnable: Runnable? = null
-    private var sniffFoundCallback: ((String, String, String, String) -> Unit)? = null
 
     private val antiSleepHandler = Handler(Looper.getMainLooper())
     private val antiSleepRunnable = object : Runnable {
@@ -169,31 +169,20 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                Handler(Looper.getMainLooper()).postDelayed({
-                    executeHideSplash()
-                }, 800)
+                Handler(Looper.getMainLooper()).postDelayed({ executeHideSplash() }, 800)
             }
 
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url.toString()
-                
-                // 仅代理 TMDB 绕过 DNS 污染，绝对不拦截 Github 等其他请求
                 if (url.contains("api.themoviedb.org")) {
                     if (request?.method.equals("OPTIONS", ignoreCase = true)) {
-                        val corsHeaders = mutableMapOf(
-                            "Access-Control-Allow-Origin" to "*",
-                            "Access-Control-Allow-Methods" to "GET, POST, OPTIONS",
-                            "Access-Control-Allow-Headers" to "*"
-                        )
+                        val corsHeaders = mutableMapOf("Access-Control-Allow-Origin" to "*", "Access-Control-Allow-Methods" to "GET, POST, OPTIONS", "Access-Control-Allow-Headers" to "*")
                         return WebResourceResponse("text/plain", "UTF-8", 200, "OK", corsHeaders, ByteArrayInputStream(ByteArray(0)))
                     }
                     try {
                         val reqBuilder = Request.Builder().url(url)
-                        request?.requestHeaders?.forEach { (key, value) -> 
-                            if (!key.equals("Host", ignoreCase = true)) reqBuilder.addHeader(key, value) 
-                        }
-                        reqBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                        
+                        request?.requestHeaders?.forEach { (key, value) -> if (!key.equals("Host", ignoreCase = true)) reqBuilder.addHeader(key, value) }
+                        reqBuilder.header("User-Agent", "Mozilla/5.0")
                         val response = okHttpClient.newCall(reqBuilder.build()).execute()
                         val headers = mutableMapOf<String, String>()
                         response.headers.forEach { (key, value) -> headers[key] = value }
@@ -207,6 +196,24 @@ class MainActivity : AppCompatActivity() {
         
         webView.addJavascriptInterface(JSBridge(), "FeelCoolTV")
         rootLayout.addView(webView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        
+        // --- 网页全屏播放器的专属遮罩层与容器 ---
+        fullscreenContainer = FrameLayout(this)
+        fullscreenContainer.setBackgroundColor(Color.BLACK)
+        fullscreenContainer.visibility = View.GONE
+        rootLayout.addView(fullscreenContainer, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+
+        loadingOverlay = TextView(this).apply {
+            text = "正在安全接入实况画面..."
+            setTextColor(Color.WHITE)
+            textSize = 20f
+            letterSpacing = 0.1f
+            gravity = android.view.Gravity.CENTER
+            setBackgroundColor(Color.BLACK)
+            visibility = View.GONE
+        }
+        rootLayout.addView(loadingOverlay, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        // ------------------------------------
         
         splashView = ImageView(this)
         splashView.setBackgroundColor(Color.TRANSPARENT)
@@ -227,7 +234,7 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         antiSleepHandler.removeCallbacksAndMessages(null)
         player?.release()
-        snifferWebView?.destroy()
+        stopWebLive()
     }
 
     override fun onBackPressed() {
@@ -238,6 +245,7 @@ class MainActivity : AppCompatActivity() {
                 webView.visibility = View.VISIBLE
                 webView.requestFocus() 
                 player?.volume = 0f    
+                stopWebLive() // 退出时销毁后台全屏网页
                 backPressCount = 0 
             } else {
                 showPureNativeToast("再按 ${3 - iptvExitCount} 次退出全屏")
@@ -266,28 +274,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 核心修复：ExoPlayer Header 注入必须绑定在 Factory 上以应对内部切片和 302 重定向
     private fun setupPlayer() {
         val dataSourceFactory = DataSource.Factory {
-            val factory = DefaultHttpDataSource.Factory()
+            DefaultHttpDataSource.Factory()
                 .setConnectTimeoutMs(15000)
                 .setReadTimeoutMs(15000)
                 .setAllowCrossProtocolRedirects(true)
-            
-            val defaultHeaders = mutableMapOf<String, String>()
-            currentVideoHeaders.forEach { (key, value) ->
-                if (value.isNotEmpty()) {
-                    if (key.equals("User-Agent", ignoreCase = true)) {
-                        factory.setUserAgent(value)
-                    } else {
-                        defaultHeaders[key] = value
-                    }
-                }
-            }
-            factory.setDefaultRequestProperties(defaultHeaders)
-            factory.createDataSource()
+                .createDataSource()
         }
-
         player = ExoPlayer.Builder(this@MainActivity)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .build().apply {
@@ -301,8 +295,7 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
-    private fun startExoPlayer(url: String, headers: Map<String, String>, targetVolume: Float) {
-        currentVideoHeaders = headers
+    private fun startExoPlayer(url: String, targetVolume: Float) {
         if (player == null) setupPlayer()
         player?.volume = targetVolume
         player?.setMediaItem(MediaItem.fromUri(url))
@@ -310,151 +303,192 @@ class MainActivity : AppCompatActivity() {
         player?.play()
     }
 
-    private fun handleM3u8Found(m3u8Url: String) {
-        if (!isSniffFound) {
-            isSniffFound = true
-            sniffTimeoutRunnable?.let { Handler(Looper.getMainLooper()).removeCallbacks(it) }
-            
-            val cookieManager = android.webkit.CookieManager.getInstance()
-            val cookie = cookieManager.getCookie(currentSniffUrl) ?: ""
-            val uri = android.net.Uri.parse(currentSniffUrl)
-            val referer = "${uri.scheme}://${uri.host}/"
-            
-            runOnUiThread {
-                sniffFoundCallback?.invoke(m3u8Url, cookie, currentPcUserAgent, referer)
-                
-                snifferWebView?.let {
-                    it.stopLoading()
-                    rootLayout.removeView(it)
-                    it.destroy()
-                }
-                snifferWebView = null
-            }
-        }
-    }
-
-    private fun sniffM3u8(targetUrl: String, onFound: (String, String, String, String) -> Unit) {
+    private fun stopWebLive() {
         runOnUiThread {
-            snifferWebView?.let {
+            liveWebView?.let {
+                it.stopLoading()
                 rootLayout.removeView(it)
                 it.destroy()
             }
+            liveWebView = null
             
-            isSniffFound = false
-            currentSniffUrl = targetUrl
-            sniffFoundCallback = onFound
+            fullscreenContainer.removeAllViews()
+            fullscreenContainer.visibility = View.GONE
+            loadingOverlay.visibility = View.GONE
             
-            val sniffer = WebView(this@MainActivity)
-            snifferWebView = sniffer
+            customViewCallback?.onCustomViewHidden()
+            customViewCallback = null
+        }
+    }
+
+    // 核心降维打击：将计就计，直接用隐藏的 WebView 加载网页，注入 CSS 把播放器撑满全屏
+    private fun startWebLive(targetUrl: String, isBackground: Boolean, actionStr: String) {
+        runOnUiThread {
+            stopWebLive()
+
+            val wv = WebView(this@MainActivity)
+            liveWebView = wv
             
-            val params = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            rootLayout.addView(sniffer, 0, params) 
-            sniffer.alpha = 0.01f
+            // 垫在底部的索引 0 位置
+            rootLayout.addView(wv, 0, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             
-            // 核心修复：强制 Windows Chrome UA，迫使 NTV 下发标准 HLS 流，彻底避开 Apple FairPlay DRM 加密
-            currentPcUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            sniffer.settings.apply {
+            if (!isBackground) {
+                loadingOverlay.visibility = View.VISIBLE
+                loadingOverlay.alpha = 1f
+            }
+
+            wv.settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
-                userAgentString = currentPcUserAgent
                 mediaPlaybackRequiresUserGesture = false 
                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
             
-            val timeoutRunnable = Runnable {
-                if (!isSniffFound) {
-                    isSniffFound = true
-                    showPureNativeToast("解析超时：该频道防盗链极强")
-                    sniffer.stopLoading()
-                    rootLayout.removeView(sniffer)
-                    sniffer.destroy()
-                    snifferWebView = null
+            wv.webChromeClient = object : WebChromeClient() {
+                // 如果网页播放器自带了全屏 API，完美接管
+                override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                    super.onShowCustomView(view, callback)
+                    fullscreenContainer.addView(view)
+                    fullscreenContainer.visibility = View.VISIBLE
+                    loadingOverlay.visibility = View.GONE
+                    customViewCallback = callback
+                }
+                override fun onHideCustomView() {
+                    super.onHideCustomView()
+                    fullscreenContainer.removeAllViews()
+                    fullscreenContainer.visibility = View.GONE
+                    customViewCallback?.onCustomViewHidden()
                 }
             }
-            sniffTimeoutRunnable = timeoutRunnable
-            Handler(Looper.getMainLooper()).postDelayed(timeoutRunnable, 20000) 
-            
-            sniffer.webViewClient = object : WebViewClient() {
+
+            wv.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    super.onPageFinished(view, url)
-                    view?.evaluateJavascript("""
+                    val mutedStr = if (isBackground) "true" else "false"
+                    val js = """
                         (function() {
-                            const originalFetch = window.fetch;
-                            window.fetch = async function() {
-                                var reqUrl = (arguments[0] instanceof Request) ? arguments[0].url : arguments[0];
-                                
-                                if(reqUrl && typeof reqUrl === 'string' && reqUrl.indexOf('playback.api.streaks.jp') !== -1) {
-                                    var response = await originalFetch.apply(this, arguments);
-                                    var clone = response.clone();
-                                    clone.json().then(function(data) {
-                                        var streamUrl = data.url || (data.stream && data.stream.url) || (data.session && data.session.stream && data.session.stream.url);
-                                        if(streamUrl && (streamUrl.indexOf('.m3u8') !== -1)) {
-                                            window.FeelCoolTV.onM3u8Found(streamUrl);
-                                        }
-                                    }).catch(function(e){});
-                                    return response;
+                            // 1. CSS 手术刀：隐藏网页上的所有花里胡哨，把播放器绝对定位撑满全屏
+                            var style = document.createElement('style');
+                            style.innerHTML = `
+                                header, footer, .global-navigation, .sideContents, 
+                                .liveContent-header, .liveContent-subtext, .liveContent-content,
+                                .publicity-contents, .ranking-list, .sponsoredArticles, #taboola-widget, iframe { 
+                                    display: none !important; opacity: 0 !important; pointer-events: none !important;
                                 }
-                                
-                                if(reqUrl && typeof reqUrl === 'string' && (reqUrl.indexOf('.m3u8') !== -1 || reqUrl.indexOf('.mpd') !== -1)) {
-                                    window.FeelCoolTV.onM3u8Found(reqUrl);
+                                body, html, #appMountPoint, .mainView, .contentsWrapper, 
+                                .pcLayoutWrapper, .mainContents, .articleDetailWrapper, 
+                                .liveContent, .liveContent-body {
+                                    margin: 0 !important; padding: 0 !important;
+                                    width: 100vw !important; height: 100vh !important;
+                                    max-width: none !important; min-width: 0 !important;
+                                    background: #000 !important; overflow: hidden !important;
                                 }
-                                return originalFetch.apply(this, arguments);
-                            };
+                                .player-block {
+                                    position: fixed !important; top: 0 !important; left: 0 !important;
+                                    width: 100vw !important; height: 100vh !important;
+                                    z-index: 999999 !important; background: #000 !important;
+                                }
+                                video {
+                                    width: 100vw !important; height: 100vh !important;
+                                    object-fit: contain !important;
+                                }
+                            `;
+                            document.head.appendChild(style);
 
-                            const originalOpen = XMLHttpRequest.prototype.open;
-                            XMLHttpRequest.prototype.open = function(method, reqUrl) {
-                                if(reqUrl && typeof reqUrl === 'string' && (reqUrl.indexOf('.m3u8') !== -1 || reqUrl.indexOf('.mpd') !== -1)) {
-                                    window.FeelCoolTV.onM3u8Found(reqUrl);
-                                }
-                                this.addEventListener('load', function() {
-                                    if(reqUrl && typeof reqUrl === 'string' && reqUrl.indexOf('playback.api.streaks.jp') !== -1) {
-                                        try {
-                                            var data = JSON.parse(this.responseText);
-                                            var streamUrl = data.url || (data.stream && data.stream.url);
-                                            if(streamUrl) window.FeelCoolTV.onM3u8Found(streamUrl);
-                                        } catch(e){}
-                                    }
-                                });
-                                originalOpen.apply(this, arguments);
-                            };
-
+                            // 2. 暴力交互模拟：解开静音并疯狂点击播放按钮
                             var attempt = 0;
                             var evOpts = {bubbles:true, cancelable:true, view: window};
                             var forcePlay = setInterval(function() {
                                 attempt++;
                                 var v = document.querySelector('video');
-                                if(v) { v.muted = true; var p = v.play(); if(p) p.catch(function(){}); }
+                                if(v) { 
+                                    v.muted = $mutedStr; 
+                                    var p = v.play(); 
+                                    if(p) p.catch(function(){}); 
+                                }
                                 
-                                var btns = document.querySelectorAll('button, .play-button, .player-block, .handle-play-button');
-                                btns.forEach(function(b) { 
-                                    // 核心修复：直接调用 DOM 节点原生 click，强制击穿 React 17 的事件委托阻断
+                                var playBtns = document.querySelectorAll('button.play-button, .vjs-big-play-button, .handle-play-button');
+                                playBtns.forEach(function(b) { 
                                     b.click(); 
                                     b.dispatchEvent(new MouseEvent('mousedown', evOpts));
                                     b.dispatchEvent(new MouseEvent('mouseup', evOpts));
                                 });
+                                
+                                // 如果是全屏模式，尝试点击网页自带的全屏按钮
+                                if (!$mutedStr) {
+                                    var fsBtns = document.querySelectorAll('button[title*="全屏"], button[aria-label*="ullscreen"], .vjs-fullscreen-control');
+                                    fsBtns.forEach(function(b) { b.click(); });
+                                }
 
-                                if(attempt > 40) clearInterval(forcePlay);
+                                if(attempt > 20) clearInterval(forcePlay);
                             }, 500);
-                        })();
-                    """.trimIndent(), null)
-                }
 
-                override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                    val reqUrl = request?.url.toString()
-                    if (!isSniffFound && reqUrl.contains(".m3u8")) {
-                        runOnUiThread { handleM3u8Found(reqUrl) }
-                    }
-                    return super.shouldInterceptRequest(view, request)
+                            // 3. 收尾工作：通知安卓层拉开黑幕
+                            setTimeout(function() {
+                                if ($mutedStr) {
+                                    // 背景静音预览模式：直接通知开始，并利用 Canvas 截取网页视频帧回传！
+                                    window.FeelCoolTV.onBackgroundVideoStarted();
+                                    
+                                    var v = document.querySelector('video');
+                                    if (v && v.readyState >= 2) {
+                                        var canvas = document.createElement('canvas');
+                                        canvas.width = 640; canvas.height = 360;
+                                        canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
+                                        var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                                        window.FeelCoolTV.cacheWebFrame(dataUrl, '$actionStr');
+                                    }
+                                } else {
+                                    // 全屏播放模式：通知撤掉黑色遮罩
+                                    window.FeelCoolTV.onWebLiveReady();
+                                }
+                            }, 3500); // 留3.5秒给网页缓冲视频
+                        })();
+                    """.trimIndent()
+                    view?.evaluateJavascript(js, null)
                 }
             }
-            sniffer.loadUrl(targetUrl)
+            wv.loadUrl(targetUrl)
         }
     }
 
     inner class JSBridge {
         @JavascriptInterface
-        fun onM3u8Found(url: String) {
-            runOnUiThread { handleM3u8Found(url) }
+        fun onWebLiveReady() {
+            runOnUiThread {
+                loadingOverlay.animate().alpha(0f).setDuration(600).withEndAction {
+                    loadingOverlay.visibility = View.GONE
+                }
+            }
+        }
+        
+        @JavascriptInterface
+        fun onBackgroundVideoStarted() {
+            runOnUiThread {
+                webView.setBackgroundColor(Color.TRANSPARENT)
+                webView.evaluateJavascript("javascript:if(window.onBackgroundVideoStarted) window.onBackgroundVideoStarted();", null)
+            }
+        }
+
+        // 神奇的 Canvas 回传：将网页上画出的图像转回安卓保存为缓存海报
+        @JavascriptInterface
+        fun cacheWebFrame(base64DataUrl: String, streamActionUrl: String) {
+            runOnUiThread {
+                try {
+                    val base64Image = base64DataUrl.split(",")[1]
+                    val decodedBytes = Base64.decode(base64Image, Base64.DEFAULT)
+                    
+                    val file = File(cacheDir, "frame_${streamActionUrl.hashCode()}.jpg")
+                    val out = FileOutputStream(file)
+                    out.write(decodedBytes)
+                    out.flush()
+                    out.close()
+                    
+                    val path = "file://${file.absolutePath}"
+                    webView.evaluateJavascript("javascript:if(window.onFrameCached) window.onFrameCached('$streamActionUrl', '$path');", null)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
         }
 
         @JavascriptInterface
@@ -470,25 +504,14 @@ class MainActivity : AppCompatActivity() {
                     
                     if (isSniff) {
                         val sniffUrl = action.substring(6)
-                        showPureNativeToast("正在突破防盗链并解析源...")
-                        sniffM3u8(sniffUrl) { m3u8Url, cookie, userAgent, referer ->
-                            runOnUiThread {
-                                // 核心修复：强行注入 Origin 头，绕过 CDN 的严格 CORS 检测
-                                val headers = mapOf(
-                                    "User-Agent" to userAgent, 
-                                    "Referer" to referer, 
-                                    "Origin" to "https://news.ntv.co.jp",
-                                    "Cookie" to cookie
-                                )
-                                startExoPlayer(m3u8Url, headers, 1f)
-                            }
-                        }
+                        // 将计就计模式，直接全屏渲染网页
+                        startWebLive(sniffUrl, false, action)
                     } else {
                         val url = action.substring(5)
                         if (player?.currentMediaItem?.localConfiguration?.uri?.toString() == url && player?.isPlaying == true) {
                             player?.volume = 1f
                         } else {
-                            startExoPlayer(url, emptyMap(), 1f)
+                            startExoPlayer(url, 1f)
                         }
                     }
                 }
@@ -534,20 +557,10 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (action.startsWith("sniff:")) {
                     val sniffUrl = action.substring(6)
-                    sniffM3u8(sniffUrl) { m3u8Url, cookie, userAgent, referer ->
-                        runOnUiThread {
-                            // 核心修复：强行注入 Origin 头，绕过 CDN 的严格 CORS 检测
-                            val headers = mapOf(
-                                "User-Agent" to userAgent, 
-                                "Referer" to referer, 
-                                "Origin" to "https://news.ntv.co.jp",
-                                "Cookie" to cookie
-                            )
-                            startExoPlayer(m3u8Url, headers, 0f)
-                        }
-                    }
+                    // 背景静音预览模式
+                    startWebLive(sniffUrl, true, action)
                 } else {
-                    startExoPlayer(action, emptyMap(), 0f)
+                    startExoPlayer(action.substring(5), 0f)
                 }
             }
         }
@@ -558,12 +571,7 @@ class MainActivity : AppCompatActivity() {
                 webView.setBackgroundColor(Color.BLACK)
                 player?.stop()
                 player?.clearMediaItems()
-                snifferWebView?.let {
-                    it.stopLoading()
-                    rootLayout.removeView(it)
-                    it.destroy()
-                }
-                snifferWebView = null
+                stopWebLive()
             }
         }
 
