@@ -175,23 +175,54 @@ class MainActivity : AppCompatActivity() {
                 }, 800)
             }
 
+            // 统一接管前端 HTML 的请求，解决跨域及国内网络连通性问题
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url.toString()
-                if (url.contains("api.themoviedb.org")) {
+                
+                if (url.contains("api.themoviedb.org") || url.contains("raw.githubusercontent.com")) {
                     if (request?.method.equals("OPTIONS", ignoreCase = true)) {
-                        val corsHeaders = mutableMapOf("Access-Control-Allow-Origin" to "*", "Access-Control-Allow-Methods" to "GET, POST, OPTIONS", "Access-Control-Allow-Headers" to "*", "Access-Control-Max-Age" to "86400")
+                        val corsHeaders = mutableMapOf(
+                            "Access-Control-Allow-Origin" to "*",
+                            "Access-Control-Allow-Methods" to "GET, POST, OPTIONS",
+                            "Access-Control-Allow-Headers" to "*",
+                            "Access-Control-Max-Age" to "86400"
+                        )
                         return WebResourceResponse("text/plain", "UTF-8", 200, "OK", corsHeaders, ByteArrayInputStream(ByteArray(0)))
                     }
+                    
                     try {
                         val reqBuilder = Request.Builder().url(url)
-                        request?.requestHeaders?.forEach { (key, value) -> if (!key.equals("Host", ignoreCase = true)) reqBuilder.addHeader(key, value) }
-                        reqBuilder.header("User-Agent", "Mozilla/5.0")
+                        request?.requestHeaders?.forEach { (key, value) -> 
+                            if (!key.equals("Host", ignoreCase = true) && !key.equals("Origin", ignoreCase = true)) {
+                                reqBuilder.addHeader(key, value) 
+                            }
+                        }
+                        reqBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                        
                         val response = okHttpClient.newCall(reqBuilder.build()).execute()
+                        
                         val headers = mutableMapOf<String, String>()
                         response.headers.forEach { (key, value) -> headers[key] = value }
                         headers["Access-Control-Allow-Origin"] = "*"
-                        return WebResourceResponse("application/json", "UTF-8", response.code, if (response.message.isEmpty()) "OK" else response.message, headers, response.body?.byteStream())
-                    } catch (e: Exception) { e.printStackTrace() }
+                        headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+                        headers["Access-Control-Allow-Headers"] = "*"
+                        
+                        val contentType = response.header("Content-Type", "application/json") ?: "application/json"
+                        val mimeType = if (contentType.contains(";")) contentType.split(";")[0].trim() else contentType
+
+                        return WebResourceResponse(
+                            mimeType, 
+                            "UTF-8", 
+                            response.code, 
+                            if (response.message.isEmpty()) "OK" else response.message, 
+                            headers, 
+                            response.body?.byteStream()
+                        )
+                    } catch (e: Exception) { 
+                        e.printStackTrace() 
+                        val corsHeaders = mutableMapOf("Access-Control-Allow-Origin" to "*")
+                        return WebResourceResponse("application/json", "UTF-8", 500, "Server Error", corsHeaders, ByteArrayInputStream("{}".toByteArray()))
+                    }
                 }
                 return super.shouldInterceptRequest(view, request)
             }
@@ -347,7 +378,7 @@ class MainActivity : AppCompatActivity() {
             // 绝对不可见：设置为 1% 透明度
             sniffer.alpha = 0.01f
             
-            // 伪装 2：采用高权重的 Windows Chrome
+            // 伪装 2：采用高权重的 Windows Chrome (防 NTV Live FairPlay 报错)
             currentPcUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
             sniffer.settings.apply {
                 javaScriptEnabled = true
@@ -453,7 +484,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     inner class JSBridge {
-        // 提供给劫持脚本的回调接口
         @JavascriptInterface
         fun onM3u8Found(url: String) {
             runOnUiThread { handleM3u8Found(url) }
