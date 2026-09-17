@@ -174,18 +174,26 @@ class MainActivity : AppCompatActivity() {
                 }, 800)
             }
 
-            // 彻底清除了其他 AI 乱加的 GitHub 拦截代码，仅代理 TMDB 绕过 DNS 污染
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url.toString()
+                
+                // 仅代理 TMDB 绕过 DNS 污染，绝对不拦截 Github 等其他请求
                 if (url.contains("api.themoviedb.org")) {
                     if (request?.method.equals("OPTIONS", ignoreCase = true)) {
-                        val corsHeaders = mutableMapOf("Access-Control-Allow-Origin" to "*", "Access-Control-Allow-Methods" to "GET, POST, OPTIONS", "Access-Control-Allow-Headers" to "*", "Access-Control-Max-Age" to "86400")
+                        val corsHeaders = mutableMapOf(
+                            "Access-Control-Allow-Origin" to "*",
+                            "Access-Control-Allow-Methods" to "GET, POST, OPTIONS",
+                            "Access-Control-Allow-Headers" to "*"
+                        )
                         return WebResourceResponse("text/plain", "UTF-8", 200, "OK", corsHeaders, ByteArrayInputStream(ByteArray(0)))
                     }
                     try {
                         val reqBuilder = Request.Builder().url(url)
-                        request?.requestHeaders?.forEach { (key, value) -> if (!key.equals("Host", ignoreCase = true)) reqBuilder.addHeader(key, value) }
-                        reqBuilder.header("User-Agent", "Mozilla/5.0")
+                        request?.requestHeaders?.forEach { (key, value) -> 
+                            if (!key.equals("Host", ignoreCase = true)) reqBuilder.addHeader(key, value) 
+                        }
+                        reqBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                        
                         val response = okHttpClient.newCall(reqBuilder.build()).execute()
                         val headers = mutableMapOf<String, String>()
                         response.headers.forEach { (key, value) -> headers[key] = value }
@@ -258,6 +266,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // 核心修复：ExoPlayer Header 注入必须绑定在 Factory 上以应对内部切片和 302 重定向
     private fun setupPlayer() {
         val dataSourceFactory = DataSource.Factory {
             val factory = DefaultHttpDataSource.Factory()
@@ -342,8 +351,8 @@ class MainActivity : AppCompatActivity() {
             rootLayout.addView(sniffer, 0, params) 
             sniffer.alpha = 0.01f
             
-            // 绝杀伪装：iPad Pro UA，避开电脑端强 DRM 加密，迫使服务器下放干净的 .m3u8 苹果流给安卓播放
-            currentPcUserAgent = "Mozilla/5.0 (iPad; CPU OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
+            // 核心修复：强制 Windows Chrome UA，迫使 NTV 下发标准 HLS 流，彻底避开 Apple FairPlay DRM 加密
+            currentPcUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             sniffer.settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -386,7 +395,7 @@ class MainActivity : AppCompatActivity() {
                                     return response;
                                 }
                                 
-                                if(reqUrl && typeof reqUrl === 'string' && reqUrl.indexOf('.m3u8') !== -1) {
+                                if(reqUrl && typeof reqUrl === 'string' && (reqUrl.indexOf('.m3u8') !== -1 || reqUrl.indexOf('.mpd') !== -1)) {
                                     window.FeelCoolTV.onM3u8Found(reqUrl);
                                 }
                                 return originalFetch.apply(this, arguments);
@@ -394,7 +403,7 @@ class MainActivity : AppCompatActivity() {
 
                             const originalOpen = XMLHttpRequest.prototype.open;
                             XMLHttpRequest.prototype.open = function(method, reqUrl) {
-                                if(reqUrl && typeof reqUrl === 'string' && reqUrl.indexOf('.m3u8') !== -1) {
+                                if(reqUrl && typeof reqUrl === 'string' && (reqUrl.indexOf('.m3u8') !== -1 || reqUrl.indexOf('.mpd') !== -1)) {
                                     window.FeelCoolTV.onM3u8Found(reqUrl);
                                 }
                                 this.addEventListener('load', function() {
@@ -418,6 +427,7 @@ class MainActivity : AppCompatActivity() {
                                 
                                 var btns = document.querySelectorAll('button, .play-button, .player-block, .handle-play-button');
                                 btns.forEach(function(b) { 
+                                    // 核心修复：直接调用 DOM 节点原生 click，强制击穿 React 17 的事件委托阻断
                                     b.click(); 
                                     b.dispatchEvent(new MouseEvent('mousedown', evOpts));
                                     b.dispatchEvent(new MouseEvent('mouseup', evOpts));
@@ -463,6 +473,7 @@ class MainActivity : AppCompatActivity() {
                         showPureNativeToast("正在突破防盗链并解析源...")
                         sniffM3u8(sniffUrl) { m3u8Url, cookie, userAgent, referer ->
                             runOnUiThread {
+                                // 核心修复：强行注入 Origin 头，绕过 CDN 的严格 CORS 检测
                                 val headers = mapOf(
                                     "User-Agent" to userAgent, 
                                     "Referer" to referer, 
@@ -525,6 +536,7 @@ class MainActivity : AppCompatActivity() {
                     val sniffUrl = action.substring(6)
                     sniffM3u8(sniffUrl) { m3u8Url, cookie, userAgent, referer ->
                         runOnUiThread {
+                            // 核心修复：强行注入 Origin 头，绕过 CDN 的严格 CORS 检测
                             val headers = mapOf(
                                 "User-Agent" to userAgent, 
                                 "Referer" to referer, 
