@@ -175,11 +175,11 @@ class MainActivity : AppCompatActivity() {
                 }, 800)
             }
 
-            // 统一接管前端 HTML 的请求，解决跨域及国内网络连通性问题
+            // 修复1：仅拦截 TMDB 绕过污染，绝对不能拦截 Github 导致 Config 下载失败
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url.toString()
                 
-                if (url.contains("api.themoviedb.org") || url.contains("raw.githubusercontent.com")) {
+                if (url.contains("api.themoviedb.org")) {
                     if (request?.method.equals("OPTIONS", ignoreCase = true)) {
                         val corsHeaders = mutableMapOf(
                             "Access-Control-Allow-Origin" to "*",
@@ -207,11 +207,8 @@ class MainActivity : AppCompatActivity() {
                         headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
                         headers["Access-Control-Allow-Headers"] = "*"
                         
-                        val contentType = response.header("Content-Type", "application/json") ?: "application/json"
-                        val mimeType = if (contentType.contains(";")) contentType.split(";")[0].trim() else contentType
-
                         return WebResourceResponse(
-                            mimeType, 
+                            "application/json", 
                             "UTF-8", 
                             response.code, 
                             if (response.message.isEmpty()) "OK" else response.message, 
@@ -220,8 +217,6 @@ class MainActivity : AppCompatActivity() {
                         )
                     } catch (e: Exception) { 
                         e.printStackTrace() 
-                        val corsHeaders = mutableMapOf("Access-Control-Allow-Origin" to "*")
-                        return WebResourceResponse("application/json", "UTF-8", 500, "Server Error", corsHeaders, ByteArrayInputStream("{}".toByteArray()))
                     }
                 }
                 return super.shouldInterceptRequest(view, request)
@@ -332,7 +327,6 @@ class MainActivity : AppCompatActivity() {
         player?.play()
     }
 
-    // --- 线程安全的收网逻辑 ---
     private fun handleM3u8Found(m3u8Url: String) {
         if (!isSniffFound) {
             isSniffFound = true
@@ -346,7 +340,6 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 sniffFoundCallback?.invoke(m3u8Url, cookie, currentPcUserAgent, referer)
                 
-                // 卸磨杀驴，销毁幽灵容器
                 snifferWebView?.let {
                     it.stopLoading()
                     rootLayout.removeView(it)
@@ -357,7 +350,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- 实体化物理级嗅探器 ---
     private fun sniffM3u8(targetUrl: String, onFound: (String, String, String, String) -> Unit) {
         runOnUiThread {
             snifferWebView?.let {
@@ -372,14 +364,12 @@ class MainActivity : AppCompatActivity() {
             val sniffer = WebView(this@MainActivity)
             snifferWebView = sniffer
             
-            // 伪装 1：强行塞满全屏尺寸，完美骗过 IntersectionObserver 检测。
             val params = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             rootLayout.addView(sniffer, 0, params) 
-            // 绝对不可见：设置为 1% 透明度
             sniffer.alpha = 0.01f
             
-            // 伪装 2：采用高权重的 Windows Chrome (防 NTV Live FairPlay 报错)
-            currentPcUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+            // 修复2：恢复 macOS Safari 伪装，击穿 Widevine DRM 加密
+            currentPcUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15"
             sniffer.settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -399,16 +389,13 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             sniffTimeoutRunnable = timeoutRunnable
-            // 放宽至 20 秒，给 API 数据交换留足时间
             Handler(Looper.getMainLooper()).postDelayed(timeoutRunnable, 20000) 
             
             sniffer.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    // 伪装 3：降维打击，不仅暴力点击，还劫持底层的 fetch 和 XHR 窃取 JSON 返回包
                     view?.evaluateJavascript("""
                         (function() {
-                            // 劫持 Fetch
                             const originalFetch = window.fetch;
                             window.fetch = async function() {
                                 var reqUrl = (arguments[0] instanceof Request) ? arguments[0].url : arguments[0];
@@ -431,7 +418,6 @@ class MainActivity : AppCompatActivity() {
                                 return originalFetch.apply(this, arguments);
                             };
 
-                            // 劫持 XHR
                             const originalOpen = XMLHttpRequest.prototype.open;
                             XMLHttpRequest.prototype.open = function(method, reqUrl) {
                                 if(reqUrl && typeof reqUrl === 'string' && (reqUrl.indexOf('.m3u8') !== -1 || reqUrl.indexOf('.mpd') !== -1)) {
@@ -449,7 +435,6 @@ class MainActivity : AppCompatActivity() {
                                 originalOpen.apply(this, arguments);
                             };
 
-                            // 暴力人类模拟器
                             var attempt = 0;
                             var evOpts = {bubbles:true, cancelable:true, view: window};
                             var forcePlay = setInterval(function() {
@@ -459,7 +444,7 @@ class MainActivity : AppCompatActivity() {
                                 
                                 var btns = document.querySelectorAll('button, .play-button, .player-block, .handle-play-button');
                                 btns.forEach(function(b) { 
-                                    b.click(); // 直接调用原生 click 处理 React 事件
+                                    b.click(); 
                                     b.dispatchEvent(new MouseEvent('mousedown', evOpts));
                                     b.dispatchEvent(new MouseEvent('mouseup', evOpts));
                                 });
@@ -470,7 +455,6 @@ class MainActivity : AppCompatActivity() {
                     """.trimIndent(), null)
                 }
 
-                // 兜底拦截：如果视频没走 fetch 而是直接挂在了 DOM 上
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                     val reqUrl = request?.url.toString()
                     if (!isSniffFound && (reqUrl.contains(".m3u8") || reqUrl.contains(".mpd"))) {
